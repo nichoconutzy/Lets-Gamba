@@ -50,8 +50,7 @@ public class HandValue implements Comparable<HandValue> {
             case STRAIGHT_FLUSH -> "Straight Flush";
             case ROYAL_FLUSH -> "Royal Flush";
             };
-        };
-    }
+        }
 
     @Override
     public String toString() {
