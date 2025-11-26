@@ -47,11 +47,9 @@ public class HandValue implements Comparable<HandValue> {
             case FLUSH -> "Flush";
             case FULL_HOUSE -> "Full House";
             case FOUR_OF_A_KIND -> "Four of a Kind";
-            case STRAIGHT_FLUSH -> {
-                // Ace-high straight flush = Royal Flush
-                if (ranks.length > 0 && ranks[0] == 14) yield "Royal Flush";
-                yield "Straight Flush";
-            }
+            case STRAIGHT_FLUSH -> "Straight Flush";
+            case ROYAL_FLUSH -> "Royal Flush";
+            };
         };
     }
 

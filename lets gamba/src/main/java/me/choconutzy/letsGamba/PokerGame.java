@@ -33,7 +33,7 @@ public class PokerGame {
         player.sendMessage(ChatColor.AQUA + "Your hand: "
                 + ChatColor.YELLOW + cardText(playerHand[0]) + ChatColor.AQUA + " and "
                 + ChatColor.YELLOW + cardText(playerHand[1]));
-        player.sendMessage(ChatColor.GRAY + "(Dealer cards are face down.)");
+        player.sendMessage(ChatColor.GRAY + "(Dealer cards are face down.)"); //buh
     }
 
     public GameStage getStage() {
@@ -46,7 +46,7 @@ public class PokerGame {
 
     public void handleAction(PokerAction action) {
         if (stage == GameStage.FINISHED) {
-            player.sendMessage(ChatColor.RED + "This game is already finished. Use /poker again to start a new one.");
+            player.sendMessage(ChatColor.RED + "This game has ended. Use /poker again to start a new one.");
             return;
         }
 
@@ -140,7 +140,7 @@ public class PokerGame {
                 + ChatColor.YELLOW + cardText(playerHand[0]) + ChatColor.AQUA + " and "
                 + ChatColor.YELLOW + cardText(playerHand[1]));
 
-        player.sendMessage(ChatColor.AQUA + "Dealer hand: "
+        player.sendMessage(ChatColor.AQUA + "Dealer hand: " //buh
                 + ChatColor.YELLOW + cardText(dealerHand[0]) + ChatColor.AQUA + " and "
                 + ChatColor.YELLOW + cardText(dealerHand[1]));
 
@@ -148,7 +148,7 @@ public class PokerGame {
 
         // Show categories
         player.sendMessage(ChatColor.GREEN + "Your best hand: " + ChatColor.GOLD + playerValue.getReadableName());
-        player.sendMessage(ChatColor.RED + "Dealer best hand: " + ChatColor.GOLD + dealerValue.getReadableName());
+        player.sendMessage(ChatColor.RED + "Dealer best hand: " + ChatColor.GOLD + dealerValue.getReadableName()); //buh
 
         int cmp = playerValue.compareTo(dealerValue);
 
@@ -157,13 +157,13 @@ public class PokerGame {
 
         if (cmp > 0) {
             if (dealerQualifies) {
-                player.sendMessage(ChatColor.GREEN + "You WIN and dealer qualifies!");
+                player.sendMessage(ChatColor.GREEN + "You WIN and dealer qualifies!"); //buh
             } else {
                 player.sendMessage(ChatColor.GREEN + "You WIN but dealer does NOT qualify.");
             }
             player.sendMessage(ChatColor.GRAY + "(Bet payouts not implemented yet – this is result only.)");
         } else if (cmp < 0) {
-            player.sendMessage(ChatColor.RED + "Dealer wins this round.");
+            player.sendMessage(ChatColor.RED + "Dealer wins this round."); //buh
         } else {
             player.sendMessage(ChatColor.YELLOW + "It's a PUSH (tie).");
         }

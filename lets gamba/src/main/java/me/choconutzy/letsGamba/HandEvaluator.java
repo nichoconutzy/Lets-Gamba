@@ -38,8 +38,7 @@ public class HandEvaluator {
                 uniqueRanks.add(r + 2);
             }
         }
-
-        // Check for flush / straight flush
+        // Check for Flush / Straight Flush / Royal Flush
         int flushSuit = -1;
         for (int s = 0; s < 4; s++) {
             if (suitCounts[s] >= 5) {
@@ -59,10 +58,13 @@ public class HandEvaluator {
             flushRanks.sort(Collections.reverseOrder());
         }
 
-        // Straight flush?
+        // Straight Flush And Royal Flush
         if (flushRanks != null) {
             HandValue sf = detectStraightFromRanks(flushRanks);
             if (sf != null) {
+                if (sf.getRanks()[0] == 14) {
+                    return new HandValue(HandCategory.ROYAL_FLUSH, sf.getRanks());
+                }
                 return new HandValue(HandCategory.STRAIGHT_FLUSH, sf.getRanks());
             }
         }
