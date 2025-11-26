@@ -36,8 +36,8 @@ public class PokerTable {
 
     // Dealer / Nitwit Logic
     private UUID dealerId;
-    private static final int WOOL_REQUIRED = 4;
-    private static final double FIND_RADIUS = 15.0;
+    private static final int WOOL_REQUIRED = 6; // Requires exactly 6 blocks for a 3x2 table
+    private static final double FIND_RADIUS = 20.0;
 
     // Max players at table
     private static final int MAX_PLAYERS = 6;
@@ -604,13 +604,16 @@ public class PokerTable {
     private boolean setupDealerAndTable(Player player) {
         // 1. Find Green Wool nearby
         List<Block> woolBlocks = findNearbyGreenWool(player.getLocation());
+
+        // Ensure we have exactly the right amount for a 3x2 table (or more/less based on loose detection)
+        // But per request, strict check for min required size.
         if (woolBlocks.size() < WOOL_REQUIRED) {
             player.sendMessage(ChatColor.RED + "Not enough Green Wool nearby!");
-            player.sendMessage(ChatColor.GRAY + "You need at least " + WOOL_REQUIRED + " blocks of Green Wool to form a table.");
+            player.sendMessage(ChatColor.GRAY + "You need a 3x2 Green Wool table (" + WOOL_REQUIRED + " blocks).");
             return false;
         }
 
-        // 2. Calculate the Center of the wool table
+        // 2. Calculate the Center of the wool table (for referencing)
         Location tableCenter = getCentroid(woolBlocks);
 
         // 3. Find Nitwit (Green Villager)
@@ -621,25 +624,66 @@ public class PokerTable {
             return false;
         }
 
-        // 4. Calculate Dealer Destination
-        // Find the "North" side of the wool (Lowest Z value)
-        double minZ = tableCenter.getZ();
+        // 4. Calculate Dealer Destination (Touching the 3-block side, centered)
+
+        // Find boundaries of the table
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+
         for (Block b : woolBlocks) {
-            if (b.getZ() < minZ) minZ = b.getZ();
+            minX = Math.min(minX, b.getX());
+            maxX = Math.max(maxX, b.getX());
+            minZ = Math.min(minZ, b.getZ());
+            maxZ = Math.max(maxZ, b.getZ());
         }
 
-        // Target: Center X, Player's Y (floor level), 1.5 blocks North of the wool edge
-        // Note: Using player Y to ensure dealer isn't floating
-        Location targetLoc = new Location(
-                tableCenter.getWorld(),
-                tableCenter.getX(),
-                player.getLocation().getY(),
-                minZ - 1.5
-        );
+        // Calculate lengths
+        int xLen = maxX - minX;
+        int zLen = maxZ - minZ;
+
+        // Calculate exact center coordinates (e.g., if X is 100, center is 100.5)
+        // Midpoint of the range
+        double midX = (minX + maxX) / 2.0 + 0.5;
+        double midZ = (minZ + maxZ) / 2.0 + 0.5;
+
+        // Use player's Y level for dealer's feet to ensure they aren't floating or buried
+        double dealerY = player.getLocation().getY();
+
+        Location targetLoc = null;
+
+        // Determine orientation. 3x2 means one side is longer.
+        if (xLen > zLen) {
+            // Table runs East-West (Long side is along X).
+            // Dealer should sit at midX, but shifted on Z.
+            // Z spots: minZ - 0.5 (North Edge) or maxZ + 1.5 (South Edge)
+
+            Location locNorth = new Location(tableCenter.getWorld(), midX, dealerY, minZ - 0.5);
+            Location locSouth = new Location(tableCenter.getWorld(), midX, dealerY, maxZ + 1.5);
+
+            // Pick the side closer to the player to avoid walking all the way around
+            if (player.getLocation().distanceSquared(locNorth) < player.getLocation().distanceSquared(locSouth)) {
+                targetLoc = locNorth;
+            } else {
+                targetLoc = locSouth;
+            }
+        } else {
+            // Table runs North-South (Long side is along Z).
+            // Dealer should sit at midZ, but shifted on X.
+            // X spots: minX - 0.5 (West Edge) or maxX + 1.5 (East Edge)
+
+            Location locWest = new Location(tableCenter.getWorld(), minX - 0.5, dealerY, midZ);
+            Location locEast = new Location(tableCenter.getWorld(), maxX + 1.5, dealerY, midZ);
+
+            if (player.getLocation().distanceSquared(locWest) < player.getLocation().distanceSquared(locEast)) {
+                targetLoc = locWest;
+            } else {
+                targetLoc = locEast;
+            }
+        }
 
         // 5. Initialize Game Data
         this.dealerId = nitwit.getUniqueId();
-        this.center = tableCenter; // The official table center is now the wool center
+        this.center = tableCenter;
 
         // 6. Start Dealer Movement Routine
         startDealerWalkingRoutine(player, nitwit, targetLoc, tableCenter);
@@ -679,7 +723,9 @@ public class PokerTable {
 
                     // 1. Position Dealer exactly
                     Location finalLoc = targetPos.clone();
+
                     // Face the center of the table
+                    // Direction vector = Target (Table Center) - Current (Dealer Seat)
                     Vector dir = lookAtTarget.clone().toVector().subtract(finalLoc.toVector());
                     finalLoc.setDirection(dir);
 

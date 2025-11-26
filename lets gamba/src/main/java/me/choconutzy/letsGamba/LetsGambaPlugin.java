@@ -17,7 +17,7 @@ public final class LetsGambaPlugin extends JavaPlugin {
         getLogger().info("Poker economy provider: " + economy.getProviderName());
         // Plugin startup logic
         getCommand("poker").setExecutor(new gambaCommand());
-        getLogger().info("PokerUltimateTexasHoldem enabled!");
+        getLogger().info("PokerUltimateTexasHoldem enabled! Gamba time!");
     }
 
     @Override

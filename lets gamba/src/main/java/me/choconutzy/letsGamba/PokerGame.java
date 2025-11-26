@@ -159,7 +159,7 @@ public class PokerGame {
             if (dealerQualifies) {
                 player.sendMessage(ChatColor.GREEN + "You WIN and dealer qualifies!"); //buh
             } else {
-                player.sendMessage(ChatColor.GREEN + "You WIN but dealer does NOT qualify.");
+                player.sendMessage(ChatColor.GREEN + "You WIN but dealer does NOT qualify."); //buh
             }
             player.sendMessage(ChatColor.GRAY + "(Bet payouts not implemented yet – this is result only.)");
         } else if (cmp < 0) {
