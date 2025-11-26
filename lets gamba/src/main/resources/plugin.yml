@@ -1,0 +1,13 @@
+name: letsgamba
+version: '0.5.10-SNAPSHOT'
+main: me.choconutzy.letsGamba.LetsGambaPlugin
+api-version: '1.21.10'
+softdepend:
+  - Vault
+
+commands:
+  poker:
+    description: Play Ultimate Texas Hold'em
+    usage: "/poker [fold|call|raise]"
+    aliases: [check, call, fold, raise]
+
