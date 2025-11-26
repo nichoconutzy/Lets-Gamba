@@ -3,8 +3,16 @@ package me.choconutzy.letsGamba;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.block.Block;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Villager; // Added for Nitwit Integration
+import org.bukkit.entity.Villager.Profession;
+import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.util.Vector;
 
 import java.util.*;
 
@@ -25,6 +33,11 @@ public class PokerTable {
     private Location center;
     private static final double JOIN_RADIUS_MIN = 0.0;
     private static final double JOIN_RADIUS_MAX = 20.0;
+
+    // Dealer / Nitwit Logic
+    private UUID dealerId;
+    private static final int WOOL_REQUIRED = 4;
+    private static final double FIND_RADIUS = 15.0;
 
     // Max players at table
     private static final int MAX_PLAYERS = 6;
@@ -93,7 +106,11 @@ public class PokerTable {
 
         // radius / center handling
         if (isEmpty()) {
-            center = player.getLocation().clone();
+            // NEW: Setup Dealer and Table Center based on Wool
+            if (!setupDealerAndTable(player)) {
+                return; // Error messages handled in helper
+            }
+            // center is now set inside setupDealerAndTable
         } else {
             if (center == null) {
                 center = player.getLocation().clone();
@@ -171,6 +188,8 @@ public class PokerTable {
         }
 
         if (players.isEmpty()) {
+            // NEW: Release dealer logic
+            releaseDealer();
             center = null;
         }
     }
@@ -578,6 +597,172 @@ public class PokerTable {
             p.sendMessage(ChatColor.GRAY + "Your hand: "
                     + cardText(hand[0]) + ChatColor.GRAY + " and " + cardText(hand[1]));
         }
+    }
+
+    // ---------- DEALER / NITWIT LOGIC ----------
+
+    private boolean setupDealerAndTable(Player player) {
+        // 1. Find Green Wool nearby
+        List<Block> woolBlocks = findNearbyGreenWool(player.getLocation());
+        if (woolBlocks.size() < WOOL_REQUIRED) {
+            player.sendMessage(ChatColor.RED + "Not enough Green Wool nearby!");
+            player.sendMessage(ChatColor.GRAY + "You need at least " + WOOL_REQUIRED + " blocks of Green Wool to form a table.");
+            return false;
+        }
+
+        // 2. Calculate the Center of the wool table
+        Location tableCenter = getCentroid(woolBlocks);
+
+        // 3. Find Nitwit (Green Villager)
+        Villager nitwit = findNearbyNitwit(player.getLocation());
+        if (nitwit == null) {
+            player.sendMessage(ChatColor.RED + "No Nitwit (Green Villager) found nearby.");
+            player.sendMessage(ChatColor.GRAY + "Find a Nitwit to be the dealer.");
+            return false;
+        }
+
+        // 4. Calculate Dealer Destination
+        // Find the "North" side of the wool (Lowest Z value)
+        double minZ = tableCenter.getZ();
+        for (Block b : woolBlocks) {
+            if (b.getZ() < minZ) minZ = b.getZ();
+        }
+
+        // Target: Center X, Player's Y (floor level), 1.5 blocks North of the wool edge
+        // Note: Using player Y to ensure dealer isn't floating
+        Location targetLoc = new Location(
+                tableCenter.getWorld(),
+                tableCenter.getX(),
+                player.getLocation().getY(),
+                minZ - 1.5
+        );
+
+        // 5. Initialize Game Data
+        this.dealerId = nitwit.getUniqueId();
+        this.center = tableCenter; // The official table center is now the wool center
+
+        // 6. Start Dealer Movement Routine
+        startDealerWalkingRoutine(player, nitwit, targetLoc, tableCenter);
+
+        return true;
+    }
+
+    private void startDealerWalkingRoutine(Player player, Villager dealer, Location targetPos, Location lookAtTarget) {
+        player.sendMessage(ChatColor.GREEN + "The Nitwit is walking to the dealer's seat...");
+
+        // Ensure AI is allowed so pathfinding works
+        dealer.setAI(true);
+        dealer.setTarget(null);
+
+        // Tell entity to walk
+        if (dealer instanceof Mob) {
+            ((Mob) dealer).getPathfinder().moveTo(targetPos);
+        }
+
+        // Timer to monitor progress
+        new BukkitRunnable() {
+            int ticks = 0;
+            final int MAX_WAIT_TICKS = 100; // 5 seconds (20 ticks = 1 sec)
+
+            @Override
+            public void run() {
+                // Safety: if table closed or dealer died
+                if (dealerId == null || !dealer.isValid()) {
+                    this.cancel();
+                    return;
+                }
+
+                double dist = dealer.getLocation().distance(targetPos);
+
+                // Check arrival (within 1.2 blocks) or Timeout
+                if (dist < 1.2 || ticks >= MAX_WAIT_TICKS) {
+
+                    // 1. Position Dealer exactly
+                    Location finalLoc = targetPos.clone();
+                    // Face the center of the table
+                    Vector dir = lookAtTarget.clone().toVector().subtract(finalLoc.toVector());
+                    finalLoc.setDirection(dir);
+
+                    dealer.teleport(finalLoc);
+
+                    // 2. Freeze Dealer
+                    dealer.setAI(false);
+                    dealer.setInvulnerable(true);
+                    dealer.setGravity(true);
+
+                    // 3. Notify
+                    if (ticks >= MAX_WAIT_TICKS) {
+                        player.sendMessage(ChatColor.YELLOW + "The dealer got a bit lost, so we helped him to his seat.");
+                    } else {
+                        player.sendMessage(ChatColor.GREEN + "The dealer is seated and ready!");
+                    }
+
+                    this.cancel();
+                    return;
+                }
+
+                // Keep refreshing pathfinding every 1 second to stay focused
+                if (ticks % 20 == 0 && ticks < MAX_WAIT_TICKS) {
+                    if (dealer instanceof Mob) {
+                        ((Mob) dealer).getPathfinder().moveTo(targetPos);
+                    }
+                }
+
+                ticks += 5; // Check every 0.25 seconds
+            }
+        }.runTaskTimer(LetsGambaPlugin.getInstance(), 0L, 5L);
+    }
+
+    private void releaseDealer() {
+        if (dealerId == null) return;
+
+        Entity e = Bukkit.getEntity(dealerId);
+        if (e instanceof Villager) {
+            Villager v = (Villager) e;
+            // Restore normal behavior
+            v.setAI(true);
+            v.setInvulnerable(false);
+        }
+        dealerId = null;
+    }
+
+    private List<Block> findNearbyGreenWool(Location center) {
+        List<Block> blocks = new ArrayList<>();
+        int radius = 5;
+        for (int x = -radius; x <= radius; x++) {
+            for (int y = -2; y <= 3; y++) {
+                for (int z = -radius; z <= radius; z++) {
+                    Block b = center.getBlock().getRelative(x, y, z);
+                    if (b.getType() == Material.GREEN_WOOL) {
+                        blocks.add(b);
+                    }
+                }
+            }
+        }
+        return blocks;
+    }
+
+    private Villager findNearbyNitwit(Location loc) {
+        for (Entity e : loc.getWorld().getNearbyEntities(loc, FIND_RADIUS, FIND_RADIUS, FIND_RADIUS)) {
+            if (e instanceof Villager) {
+                Villager v = (Villager) e;
+                if (v.getProfession() == Profession.NITWIT && v.isValid()) {
+                    return v;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Location getCentroid(List<Block> blocks) {
+        if (blocks.isEmpty()) return null;
+        double totalX = 0, totalY = 0, totalZ = 0;
+        for (Block b : blocks) {
+            totalX += b.getX() + 0.5;
+            totalY += b.getY() + 0.5;
+            totalZ += b.getZ() + 0.5;
+        }
+        return new Location(blocks.get(0).getWorld(), totalX / blocks.size(), totalY / blocks.size(), totalZ / blocks.size());
     }
 
     // ---------- AFK CHECKER ----------
