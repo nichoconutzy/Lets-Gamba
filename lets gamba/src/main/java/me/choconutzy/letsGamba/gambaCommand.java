@@ -43,9 +43,10 @@ public class gambaCommand implements CommandExecutor {
             return true;
         }
 
-        // /poker info
-        if (sub.equals("info")) {
-            PokerManager.showTableInfo(player);
+        // /poker leave
+        if (sub.equals("leave")) {
+            PokerManager.leaveTable(player);
+            player.sendMessage(ChatColor.RED + "You have left the poker table.");
             return true;
         }
 
