@@ -1,7 +1,7 @@
 # Lets-Gamba
 Poker gambling plugin for servers running Paper on Java Minecraft 1.21.10
 
-## Current Version: 0.5.18
+## Current Version: 0.5.20
 
 ### Summary
 This Minecraft plugin adds in Ultimate Texas Hold'em for Paper Minecraft Java 1.21.10. It includes the main game in the chatbox, economy integration, and poker table range detection.
