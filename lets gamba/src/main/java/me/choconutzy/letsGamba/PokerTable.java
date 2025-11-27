@@ -310,9 +310,7 @@ public class PokerTable {
             int count = getSeatCount();
             broadcast(ChatColor.GRAY + "Players seated: " + ChatColor.GOLD + count);
 
-            if (players.size() >= 2 && !inHand && restartTask == null) {
-                startNewHand();
-            } else if (players.size() < 2) {
+            if (players.size() < 2) {
                 player.sendMessage(ChatColor.GRAY + "Waiting for at least one more player to join with /poker join.");
             }
         } else {
@@ -320,15 +318,23 @@ public class PokerTable {
         }
         // Autostart Timer
         if (players.size() >= 2 && !inHand && restartTask == null) {
-            broadcast(ChatColor.GREEN + "Minimum players reached. Starting hand in 3 seconds...");
+            broadcast(ChatColor.GREEN + "Minimum players reached. Starting hand in 10 seconds...");
 
             restartTask = new BukkitRunnable() {
+                int countdown = 10;
+
                 @Override
                 public void run() {
-                    restartTask = null;
-                    startNewHand(); // Triggers the game start
+                    if (countdown > 0) {
+                        broadcast(ChatColor.YELLOW + String.valueOf(countdown) + "...");
+                        countdown--;
+                    } else {
+                        restartTask = null;
+                        startNewHand(); // Triggers the game start
+                        this.cancel();
+                    }
                 }
-            }.runTaskLater(LetsGambaPlugin.getInstance(), 60L); // 60 ticks = 3 seconds
+            }.runTaskTimer(LetsGambaPlugin.getInstance(), 0L, 20L); // Run immediately, then every second
         }
     }
 
