@@ -1,16 +1,16 @@
 package me.choconutzy.letsGamba;
 
-import java.math.BigDecimal;
 import org.bukkit.Bukkit;
-import net.md_5.bungee.api.chat.ClickEvent;
-import net.md_5.bungee.api.chat.ComponentBuilder;
-import net.md_5.bungee.api.chat.HoverEvent;
-import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.ComponentBuilder;
+import net.md_5.bungee.api.chat.HoverEvent;
+import net.md_5.bungee.api.chat.TextComponent;
 
 public class gambaCommand implements CommandExecutor {
 
@@ -21,13 +21,21 @@ public class gambaCommand implements CommandExecutor {
             return true;
         }
 
-        // /poker  -> join/start global table
+        // /poker  -> Host/Create a table (Only the host does this)
         if (args.length == 0) {
-            PokerManager.joinTable(player);
+            PokerManager.hostTable(player);
             return true;
         }
 
         String sub = args[0].toLowerCase();
+
+        // /poker join -> Join an existing table
+        if (sub.equals("join") || sub.equals("j")) {
+            // Support for /poker join <ID>
+            String idArg = (args.length > 1) ? args[1] : "";
+            PokerManager.joinTable(player, idArg);
+            return true;
+        }
 
         // /poker leave
         if (sub.equals("leave")) {
@@ -43,7 +51,8 @@ public class gambaCommand implements CommandExecutor {
 
         // /poker fold
         if (sub.equals("fold") || sub.equals("f")) {
-            doFold(player);
+            // NEW: Route action via Manager to find the player's specific table
+            PokerManager.handleAction(player, PokerAction.FOLD);
             return true;
         }
 
@@ -52,35 +61,16 @@ public class gambaCommand implements CommandExecutor {
             doCall(player);
             return true;
         }
-        // /poker raise | bet | r  (default raise, no custom amount for now)
+        // /poker raise | bet | r
         if (sub.equals("raise") || sub.equals("bet") || sub.equals("r")) {
             PokerManager.handleAction(player, PokerAction.RAISE);
             return true;
         }
 
-        
-
-        // ----- /poker <playerName>  ----------------------------------------
-        // If it wasn't leave/fold/call/raise, treat first arg as a player name
-        if (args.length == 1) {
-            Player target = Bukkit.getPlayerExact(args[0]);
-
-            if (target == null || !target.isOnline()) {
-                player.sendMessage(ChatColor.RED + "Player '" + args[0] + "' is not online.");
-                return true;
-            }
-
-            // For now we still use the single global table, just with nicer messaging
-            PokerManager.joinTable(player);
-            player.sendMessage(ChatColor.GREEN + "You join the poker table with "
-                    + ChatColor.GOLD + target.getName() + ChatColor.GREEN + ".");
-            return true;
-        }
-
-        // Unknown usage (extra args, etc.)
+        // Unknown usage
         player.sendMessage(ChatColor.RED + "Unknown poker command. Usage:");
-        player.sendMessage(ChatColor.RED + "/poker");
-        player.sendMessage(ChatColor.RED + "/poker <player>");
+        player.sendMessage(ChatColor.RED + "/poker " + ChatColor.GRAY + "(Host a new table)");
+        player.sendMessage(ChatColor.RED + "/poker join " + ChatColor.GRAY + "(Join existing table)");
         player.sendMessage(ChatColor.RED + "/poker leave");
         player.sendMessage(ChatColor.RED + "/poker fold | call | raise");
         return true;
@@ -94,10 +84,6 @@ public class gambaCommand implements CommandExecutor {
 
     private void doCall(Player player) {
         PokerManager.handleAction(player, PokerAction.CHECK_OR_CALL);
-    }
-
-    private void doRaise(Player player) {
-        PokerManager.handleAction(player, PokerAction.RAISE);
     }
 
     // ---- Chat buttons menu ---------------------------------------------

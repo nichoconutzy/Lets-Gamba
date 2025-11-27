@@ -17,13 +17,18 @@ public final class LetsGambaPlugin extends JavaPlugin {
         getLogger().info("Poker economy provider: " + economy.getProviderName());
         // Plugin startup logic
         getCommand("poker").setExecutor(new gambaCommand());
+
+        if (getServer().getPluginManager().getPlugin("GSit") != null) {
+            getLogger().info("GSit detected! Enabling auto-join on sit.");
+            getServer().getPluginManager().registerEvents(new GSitListener(), this);
+        }
         getLogger().info("PokerUltimateTexasHoldem enabled! Gamba time!");
     }
 
     @Override
     public void onDisable() {
+        PokerManager.shutdownAll();
         getLogger().info("PokerUltimateTexasHoldem disabled!");
-        // Plugin shutdown logic
     }
     public static LetsGambaPlugin getInstance() {
     return instance;

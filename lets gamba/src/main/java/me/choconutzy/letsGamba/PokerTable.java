@@ -9,6 +9,7 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
+import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.entity.Villager; // Added for Nitwit Integration
 import org.bukkit.entity.Villager.Profession;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -19,7 +20,9 @@ import java.util.*;
 public class PokerTable {
 
     // Seating order
+    private final int tableId; // Table ID
     private final LinkedHashMap<UUID, TablePlayer> players = new LinkedHashMap<>();
+    private final List<Block> tableBlocks = new ArrayList<>();
 
     private Deck deck;
     private final List<Card> board = new ArrayList<>();
@@ -28,6 +31,9 @@ public class PokerTable {
 
     // whose turn is it
     private UUID currentPlayerId = null;
+    public boolean hasPlayer(UUID uuid) {
+        return players.containsKey(uuid);
+    }
 
     // Table location + radius
     private Location center;
@@ -37,12 +43,27 @@ public class PokerTable {
     // Dealer / Nitwit Logic
     private UUID dealerId;
     private static final int WOOL_REQUIRED = 6; // Requires exactly 6 blocks for a 3x2 table
-    private static final double FIND_RADIUS = 20.0;
+    private static final double FIND_RADIUS = 40.0;
+    private static final double ACTIVATION_DISTANCE = 5.0; // Distance player must be to start game
+    private boolean waitingForHost = false; // Is dealer waiting for player?
+    private boolean isSetupInProgress = false;
+    private BukkitTask proximityTask = null; // Timer task
+    private BukkitTask restartTask = null;
 
     // Max players at table
     private static final int MAX_PLAYERS = 6;
 
-    public PokerTable() {
+    public PokerTable(int tableId) {
+        this.tableId = tableId;
+    }
+
+    public int getTableId() {
+        return tableId;
+    }
+
+    // NEW: Helper for GSit Listener
+    public boolean isBlockPartofTable(Block b) {
+        return tableBlocks.contains(b);
     }
 
     // ---------- BASIC INFO HELPERS ----------
@@ -58,7 +79,7 @@ public class PokerTable {
     public void sendInfo(Player viewer) {
         if (center == null || players.isEmpty()) {
             viewer.sendMessage(ChatColor.RED + "There is currently no active poker table.");
-            viewer.sendMessage(ChatColor.GRAY + "Use /poker to open one.");
+            viewer.sendMessage(ChatColor.GRAY + "Use /poker to open a table with a dealer.");
             return;
         }
 
@@ -101,44 +122,99 @@ public class PokerTable {
     }
 
     // ---------- JOIN / LEAVE & RADIUS ----------
+    public void hostTable(Player player) { // HOSTING TABLE
+        // Optional debug logging (uncomment for troubleshooting)
+        // System.out.println("[POKER DEBUG] " + player.getName() + " called hostTable - center: " + center + ", isSetup: " + isSetupInProgress + ", waiting: " + waitingForHost);
 
-    public void join(Player player) {
-
-        // radius / center handling
-        if (isEmpty()) {
-            // NEW: Setup Dealer and Table Center based on Wool
-            if (!setupDealerAndTable(player)) {
-                return; // Error messages handled in helper
-            }
-            // center is now set inside setupDealerAndTable
-        } else {
-            if (center == null) {
-                center = player.getLocation().clone();
-            }
-            if (!player.getWorld().equals(center.getWorld())) {
-                player.sendMessage(ChatColor.RED + "You are in a different world from the poker table.");
-                return;
-            }
-            double dist = player.getLocation().distance(center);
-            if (dist < JOIN_RADIUS_MIN || dist > JOIN_RADIUS_MAX) {
-                player.sendMessage(ChatColor.RED + "You are not in range of the poker table.");
-                player.sendMessage(ChatColor.GRAY + "You must be between "
-                        + (int) JOIN_RADIUS_MIN + " and " + (int) JOIN_RADIUS_MAX
-                        + " blocks from where the table was opened.");
-                return;
-            }
+        // === EMERGENCY STATE RECOVERY ===
+        // Detect and fix corrupted state where flags are true but dealer entity is invalid
+        if (isSetupInProgress && (dealerId == null || Bukkit.getEntity(dealerId) == null)) {
+            player.sendMessage(ChatColor.YELLOW + "Detected stale setup state (dealer lost). Resetting...");
+            isSetupInProgress = false;
+            waitingForHost = false;
         }
 
+        // If waiting for host but no valid dealer exists, cleanup everything
+        if (waitingForHost && (dealerId == null || Bukkit.getEntity(dealerId) == null)) {
+            player.sendMessage(ChatColor.YELLOW + "Previous table setup expired. Resetting...");
+            forceCleanup();
+        }
+
+        // === ACTIVE TABLE GUARD ===
+        // Prevent hosting if a table is already active and not in waiting state
+        if (center != null && !waitingForHost) {
+            player.sendMessage(ChatColor.RED + "A poker table is already active!");
+            player.sendMessage(ChatColor.GRAY + "Use " + ChatColor.WHITE + "/poker join" + ChatColor.GRAY + " to join it.");
+            return;
+        }
+
+        // === SETUP IN PROGRESS GUARD ===
+        // Prevent concurrent setup attempts
+        if (isSetupInProgress || waitingForHost) {
+            if (waitingForHost) {
+                player.sendMessage(ChatColor.YELLOW + "The dealer is waiting for the host to approach the table.");
+                player.sendMessage(ChatColor.GRAY + "Walk closer to the dealer to activate the table.");
+            } else {
+                player.sendMessage(ChatColor.YELLOW + "The dealer is walking to the table. Please wait.");
+            }
+            return;
+        }
+
+        // === EXECUTE SETUP WITH FAILSAFE ===
+        boolean success = false;
+        try {
+            success = setupDealerAndTable(player);
+        } catch (Exception e) {
+            // Catch any unexpected errors during setup
+            e.printStackTrace(); // Log to console for debugging
+            player.sendMessage(ChatColor.RED + "Unexpected error during table setup. Please try again.");
+        } finally {
+            // ALWAYS reset flags if setup failed or threw exception
+            if (!success) {
+                isSetupInProgress = false;
+                waitingForHost = false;
+            }
+        }
+    }
+
+    public void join(Player player) {
+        // 1. Prevent joining if table isn't set up yet
+        if (center == null) {
+            if (waitingForHost) {
+                player.sendMessage(ChatColor.YELLOW + "The table is waiting for the host to open it.");
+                player.sendMessage(ChatColor.GRAY + "Once opened, you can use /poker join.");
+                return;
+            }
+            player.sendMessage(ChatColor.RED + "No poker table is currently open.");
+            player.sendMessage(ChatColor.GRAY + "Use " + ChatColor.WHITE + "/poker" + ChatColor.GRAY + " to host one.");
+            return;
+        }
+
+        // 2. World Check
+        if (!player.getWorld().equals(center.getWorld())) {
+            player.sendMessage(ChatColor.RED + "You are in a different world from the poker table.");
+            return;
+        }
+
+        // 3. Radius Check
+        double dist = player.getLocation().distance(center);
+        if (dist > JOIN_RADIUS_MAX) {
+            player.sendMessage(ChatColor.RED + "You are not in range of the poker table.");
+            return;
+        }
+
+        // 4. Game State Checks
         if (inHand) {
             player.sendMessage(ChatColor.RED + "A hand is already in progress. Wait for the next round.");
             return;
         }
 
         if (players.size() >= MAX_PLAYERS) {
-            player.sendMessage(ChatColor.RED + "This poker table is full. (" + MAX_PLAYERS + " players maximum)");
+            player.sendMessage(ChatColor.RED + "This poker table is full.");
             return;
         }
 
+        // 5. Add Player logic
         UUID id = player.getUniqueId();
         if (!players.containsKey(id)) {
             TablePlayer tp = new TablePlayer(player);
@@ -146,21 +222,32 @@ public class PokerTable {
             players.put(id, tp);
 
             broadcast(ChatColor.AQUA + player.getName() + " joined the poker table.");
+            updateDealerHead(player);
+
+            if (isEmpty()) startAfkChecker();
 
             int count = getSeatCount();
-            broadcast(ChatColor.GRAY + "There "
-                    + (count == 1 ? "is " : "are ")
-                    + ChatColor.GOLD + count + ChatColor.GRAY
-                    + (count == 1 ? " player" : " players")
-                    + " seated at the table.");
+            broadcast(ChatColor.GRAY + "Players seated: " + ChatColor.GOLD + count);
+
+            if (players.size() >= 2 && !inHand && restartTask == null) {
+                startNewHand();
+            } else if (players.size() < 2) {
+                player.sendMessage(ChatColor.GRAY + "Waiting for at least one more player to join with /poker join.");
+            }
         } else {
             player.sendMessage(ChatColor.YELLOW + "You are already seated at this table.");
         }
+        // Autostart Timer
+        if (players.size() >= 2 && !inHand && restartTask == null) {
+            broadcast(ChatColor.GREEN + "Minimum players reached. Starting hand in 3 seconds...");
 
-        if (players.size() >= 2 && !inHand) {
-            startNewHand();
-        } else if (players.size() < 2) {
-            player.sendMessage(ChatColor.GRAY + "Waiting for at least one more player to join with /poker.");
+            restartTask = new BukkitRunnable() {
+                @Override
+                public void run() {
+                    restartTask = null;
+                    startNewHand(); // Triggers the game start
+                }
+            }.runTaskLater(LetsGambaPlugin.getInstance(), 60L); // 60 ticks = 3 seconds
         }
     }
 
@@ -192,11 +279,47 @@ public class PokerTable {
             releaseDealer();
             center = null;
         }
+        if (players.size() < 2) {
+            // If a restart timer was running, cancel it because we lost too many players
+            if (restartTask != null) {
+                restartTask.cancel();
+                restartTask = null;
+                broadcast(ChatColor.RED + "Not enough players to continue. Auto-start cancelled.");
+            }
+
+            if (inHand) {
+                broadcast(ChatColor.RED + "Not enough players to continue. Hand ended.");
+                endHand();
+            }
+        }
+        if (players.isEmpty()) {
+            forceCleanup(); // Releases the Dealer entity
+            PokerManager.removeTable(this.tableId); // Removes from Manager Map
+            if (player.isOnline()) {
+                player.sendMessage(ChatColor.GRAY + "Table #" + tableId + " has been closed.");
+            }
+        }
+    }
+
+    // NEW: Helper method to clean up without logic checks
+    public void forceCleanup() {
+        releaseDealer();
+        if (proximityTask != null) proximityTask.cancel();
+        if (restartTask != null) restartTask.cancel();
+        tableBlocks.clear();
+        center = null;
     }
 
     // ---------- START HAND ----------
 
     private void startNewHand() {
+        // Check system
+        if (players.size() < 2) {
+            broadcast(ChatColor.RED + "Not enough players to start a hand.");
+            inHand = false;
+            return;
+        }
+
         inHand = true;
         stage = GameStage.PRE_FLOP;
         board.clear();
@@ -461,7 +584,36 @@ public class PokerTable {
         inHand = false;
         stage = GameStage.FINISHED;
         currentPlayerId = null;
-        broadcast(ChatColor.GRAY + "Hand over. Use /poker again to play another multiplayer hand.");
+
+        int playerCount = players.size();
+
+        if (playerCount < 2) {
+            broadcast(ChatColor.RED + "Waiting for more players to join to start the next hand...");
+            broadcast(ChatColor.GRAY + "Current players: " + playerCount + "/6. Use /poker join.");
+        } else {
+            broadcast(ChatColor.GRAY + "--------------------------------");
+            broadcast(ChatColor.AQUA + "  Hand Finished!");
+            broadcast(ChatColor.YELLOW + "  Next hand starting in 5 seconds...");
+            broadcast(ChatColor.GRAY + "  Type " + ChatColor.RED + "/poker leave" + ChatColor.GRAY + " to quit now.");
+            broadcast(ChatColor.GRAY + "--------------------------------");
+
+            // Assign to variable so we can check it later
+            restartTask = new BukkitRunnable() {
+                @Override
+                public void run() {
+                    restartTask = null; // Clear the variable when it runs
+
+                    // Safety checks
+                    if (players.size() < 2) {
+                        broadcast(ChatColor.RED + "Not enough players to start the next hand.");
+                        return;
+                    }
+                    if (center == null) return;
+
+                    startNewHand();
+                }
+            }.runTaskLater(LetsGambaPlugin.getInstance(), 100L); // 5 seconds
+        }
     }
 
     // ---------- TURN HELPERS ----------
@@ -499,6 +651,26 @@ public class PokerTable {
         return null;
     }
 
+    private void updateDealerHead(Player target) {
+        if (dealerId == null || target == null) return;
+
+        Entity e = Bukkit.getEntity(dealerId);
+        if (!(e instanceof Villager)) return;
+        Villager dealer = (Villager) e;
+
+        Location dealerLoc = dealer.getLocation();
+        Location targetLoc = target.getEyeLocation();
+
+        // Calculate vector from Dealer Eyes to Player Eyes
+        Vector direction = targetLoc.toVector().subtract(dealerLoc.clone().add(0, 1.62, 0).toVector());
+
+        // Update the location direction so he faces the player
+        dealerLoc.setDirection(direction);
+
+        // Teleport in place (Required because we set AI to false later)
+        dealer.teleport(dealerLoc);
+    }
+
     private void announceTurn() {
         if (currentPlayerId == null) return;
 
@@ -512,6 +684,7 @@ public class PokerTable {
 
         broadcast(ChatColor.AQUA + "It is now " + tp.getName() + "'s turn.");
 
+        updateDealerHead(p);
         Card[] hand = tp.getHand();
         p.sendMessage(ChatColor.AQUA + "Your hand: "
                 + cardText(hand[0]) + ChatColor.AQUA + " and " + cardText(hand[1]));
@@ -530,6 +703,7 @@ public class PokerTable {
             cmd.sendActionMenu(player);
         }
     }
+
 
     // ---------- BROADCAST HELPERS ----------
 
@@ -600,33 +774,32 @@ public class PokerTable {
     }
 
     // ---------- DEALER / NITWIT LOGIC ----------
+    boolean setupDealerAndTable(Player player) {
+        isSetupInProgress = true;
 
-    private boolean setupDealerAndTable(Player player) {
         // 1. Find Green Wool nearby
         List<Block> woolBlocks = findNearbyGreenWool(player.getLocation());
-
-        // Ensure we have exactly the right amount for a 3x2 table (or more/less based on loose detection)
-        // But per request, strict check for min required size.
         if (woolBlocks.size() < WOOL_REQUIRED) {
             player.sendMessage(ChatColor.RED + "Not enough Green Wool nearby!");
-            player.sendMessage(ChatColor.GRAY + "You need a 3x2 Green Wool table (" + WOOL_REQUIRED + " blocks).");
+            player.sendMessage(ChatColor.GRAY + "You need a 3x2 Green Wool table.");
+            isSetupInProgress = false;
             return false;
         }
+        this.tableBlocks.clear();
+        this.tableBlocks.addAll(woolBlocks);
 
-        // 2. Calculate the Center of the wool table (for referencing)
         Location tableCenter = getCentroid(woolBlocks);
 
-        // 3. Find Nitwit (Green Villager)
+        // 2. Find Nitwit (Green Villager)
         Villager nitwit = findNearbyNitwit(player.getLocation());
         if (nitwit == null) {
             player.sendMessage(ChatColor.RED + "No Nitwit (Green Villager) found nearby.");
-            player.sendMessage(ChatColor.GRAY + "Find a Nitwit to be the dealer.");
+            isSetupInProgress = false;
             return false;
         }
 
-        // 4. Calculate Dealer Destination (Touching the 3-block side, centered)
-
-        // Find boundaries of the table
+        // 3. Calculate Dealer Destination
+        // (Logic copied from previous file to ensure we get the target location BEFORE moving him)
         int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
         int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
 
@@ -637,129 +810,186 @@ public class PokerTable {
             maxZ = Math.max(maxZ, b.getZ());
         }
 
-        // Calculate lengths
+        double midX = (minX + maxX) / 2.0 + 0.5;
+        double midZ = (minZ + maxZ) / 2.0 + 0.5;
+        double dealerY = Math.floor(player.getLocation().getY());
+
+        Location c1, c2;
         int xLen = maxX - minX;
         int zLen = maxZ - minZ;
 
-        // Calculate exact center coordinates (e.g., if X is 100, center is 100.5)
-        // Midpoint of the range
-        double midX = (minX + maxX) / 2.0 + 0.5;
-        double midZ = (minZ + maxZ) / 2.0 + 0.5;
-
-        // Use player's Y level for dealer's feet to ensure they aren't floating or buried
-        double dealerY = player.getLocation().getY();
-
-        Location targetLoc = null;
-
-        // Determine orientation. 3x2 means one side is longer.
         if (xLen > zLen) {
-            // Table runs East-West (Long side is along X).
-            // Dealer should sit at midX, but shifted on Z.
-            // Z spots: minZ - 0.5 (North Edge) or maxZ + 1.5 (South Edge)
-
-            Location locNorth = new Location(tableCenter.getWorld(), midX, dealerY, minZ - 0.5);
-            Location locSouth = new Location(tableCenter.getWorld(), midX, dealerY, maxZ + 1.5);
-
-            // Pick the side closer to the player to avoid walking all the way around
-            if (player.getLocation().distanceSquared(locNorth) < player.getLocation().distanceSquared(locSouth)) {
-                targetLoc = locNorth;
-            } else {
-                targetLoc = locSouth;
-            }
+            c1 = new Location(tableCenter.getWorld(), midX, dealerY, minZ - 0.5);
+            c2 = new Location(tableCenter.getWorld(), midX, dealerY, maxZ + 1.5);
         } else {
-            // Table runs North-South (Long side is along Z).
-            // Dealer should sit at midZ, but shifted on X.
-            // X spots: minX - 0.5 (West Edge) or maxX + 1.5 (East Edge)
-
-            Location locWest = new Location(tableCenter.getWorld(), minX - 0.5, dealerY, midZ);
-            Location locEast = new Location(tableCenter.getWorld(), maxX + 1.5, dealerY, midZ);
-
-            if (player.getLocation().distanceSquared(locWest) < player.getLocation().distanceSquared(locEast)) {
-                targetLoc = locWest;
-            } else {
-                targetLoc = locEast;
-            }
+            c1 = new Location(tableCenter.getWorld(), minX - 0.5, dealerY, midZ);
+            c2 = new Location(tableCenter.getWorld(), maxX + 1.5, dealerY, midZ);
         }
 
-        // 5. Initialize Game Data
+        boolean c1Bad = hasNeighboringStairs(c1, tableCenter);
+        boolean c2Bad = hasNeighboringStairs(c2, tableCenter);
+
+        Location targetLoc;
+        if (c1Bad && !c2Bad) targetLoc = c2;
+        else if (!c1Bad && c2Bad) targetLoc = c1;
+        else targetLoc = (player.getLocation().distanceSquared(c1) < player.getLocation().distanceSquared(c2)) ? c1 : c2;
+
+        // 4. Initialize Game Data
         this.dealerId = nitwit.getUniqueId();
         this.center = tableCenter;
 
+        // 5. BUG FIX: Check if Dealer is ALREADY there
+        if (nitwit.getLocation().distance(targetLoc) < 1.5) {
+            player.sendMessage(ChatColor.GREEN + "Dealer is already at the table.");
+
+            // Ensure he is snapped to grid and frozen
+            targetLoc.setDirection(tableCenter.toVector().subtract(targetLoc.toVector()));
+            targetLoc.setPitch(0);
+            nitwit.teleport(targetLoc);
+            nitwit.setAI(false);
+            nitwit.setInvulnerable(true);
+            nitwit.setGravity(true);
+
+            // Skip walking, go straight to waiting
+            isSetupInProgress = false;
+            startProximityCheck(player);
+            return true;
+        }
+
         // 6. Start Dealer Movement Routine
         startDealerWalkingRoutine(player, nitwit, targetLoc, tableCenter);
-
         return true;
     }
 
+    // Update this method to set isSetupInProgress = false when done or cancelled
     private void startDealerWalkingRoutine(Player player, Villager dealer, Location targetPos, Location lookAtTarget) {
         player.sendMessage(ChatColor.GREEN + "The Nitwit is walking to the dealer's seat...");
-
-        // Ensure AI is allowed so pathfinding works
         dealer.setAI(true);
         dealer.setTarget(null);
+        if (dealer instanceof Mob) ((Mob) dealer).getPathfinder().moveTo(targetPos);
 
-        // Tell entity to walk
-        if (dealer instanceof Mob) {
-            ((Mob) dealer).getPathfinder().moveTo(targetPos);
-        }
-
-        // Timer to monitor progress
         new BukkitRunnable() {
             int ticks = 0;
-            final int MAX_WAIT_TICKS = 100; // 5 seconds (20 ticks = 1 sec)
+            final int MAX_WAIT_TICKS = 100;
 
             @Override
             public void run() {
-                // Safety: if table closed or dealer died
                 if (dealerId == null || !dealer.isValid()) {
+                    isSetupInProgress = false; // Reset flag
                     this.cancel();
                     return;
                 }
 
                 double dist = dealer.getLocation().distance(targetPos);
 
-                // Check arrival (within 1.2 blocks) or Timeout
                 if (dist < 1.2 || ticks >= MAX_WAIT_TICKS) {
-
-                    // 1. Position Dealer exactly
                     Location finalLoc = targetPos.clone();
-
-                    // Face the center of the table
-                    // Direction vector = Target (Table Center) - Current (Dealer Seat)
                     Vector dir = lookAtTarget.clone().toVector().subtract(finalLoc.toVector());
                     finalLoc.setDirection(dir);
+                    finalLoc.setPitch(0);
 
                     dealer.teleport(finalLoc);
-
-                    // 2. Freeze Dealer
                     dealer.setAI(false);
                     dealer.setInvulnerable(true);
                     dealer.setGravity(true);
 
-                    // 3. Notify
-                    if (ticks >= MAX_WAIT_TICKS) {
-                        player.sendMessage(ChatColor.YELLOW + "The dealer got a bit lost, so we helped him to his seat.");
-                    } else {
-                        player.sendMessage(ChatColor.GREEN + "The dealer is seated and ready!");
+                    isSetupInProgress = false; // Walking done
+                    startProximityCheck(player);
+                    this.cancel();
+                    return;
+                }
+
+                if (ticks % 20 == 0 && ticks < MAX_WAIT_TICKS) {
+                    if (dealer instanceof Mob) ((Mob) dealer).getPathfinder().moveTo(targetPos);
+                }
+                ticks += 5;
+            }
+        }.runTaskTimer(LetsGambaPlugin.getInstance(), 0L, 5L);
+    }
+
+    private boolean hasNeighboringStairs(Location dealerLoc, Location faceTarget) {
+        // Calculate the vector pointing from Dealer to Table Center
+        Vector direction = faceTarget.toVector().subtract(dealerLoc.toVector()).setY(0).normalize();
+
+        // Calculate Right Vector (Cross product with Up)
+        Vector right = direction.clone().crossProduct(new Vector(0, 1, 0)).normalize();
+
+        // Calculate Left Vector (Reverse of Right)
+        Vector left = right.clone().multiply(-1);
+
+        // Get blocks to left and right
+        Block rightBlock = dealerLoc.clone().add(right).getBlock();
+        Block leftBlock = dealerLoc.clone().add(left).getBlock();
+
+        return isStair(rightBlock) || isStair(leftBlock);
+    }
+
+    private boolean isStair(Block b) {
+        return b != null && b.getType().name().endsWith("_STAIRS");
+    }
+
+    private void startProximityCheck(Player initiator) {
+        waitingForHost = true;
+        initiator.sendMessage(ChatColor.GREEN + "The Dealer has arrived! Walk to the table to open it.");
+
+        // Task runs every 1 second (20 ticks)
+        proximityTask = new BukkitRunnable() {
+            int secondsWaited = 0;
+            final int TIMEOUT = 45;
+
+            @Override
+            public void run() {
+                // Safety check
+                if (dealerId == null || center == null) {
+                    this.cancel();
+                    waitingForHost = false;
+                    return;
+                }
+
+                // Check if initiator (or any player) is close enough
+                boolean playerClose = false;
+                if (initiator.isOnline() && initiator.getWorld().equals(center.getWorld())) {
+                    if (initiator.getLocation().distance(center) <= ACTIVATION_DISTANCE) {
+                        playerClose = true;
                     }
+                }
+
+                if (playerClose) {
+                    waitingForHost = false;
+
+                    Bukkit.broadcastMessage(ChatColor.GREEN + "[Poker] A table is open at "
+                            + ChatColor.YELLOW + center.getBlockX() + ", " + center.getBlockY() + ", " + center.getBlockZ()
+                            + ChatColor.GREEN + "! Use " + ChatColor.GOLD + "/poker join" + ChatColor.GREEN + " to join the table.");
+
+                    // Manually trigger join for the initiator now that they are close
+                    join(initiator);
 
                     this.cancel();
                     return;
                 }
 
-                // Keep refreshing pathfinding every 1 second to stay focused
-                if (ticks % 20 == 0 && ticks < MAX_WAIT_TICKS) {
-                    if (dealer instanceof Mob) {
-                        ((Mob) dealer).getPathfinder().moveTo(targetPos);
-                    }
-                }
+                secondsWaited++;
 
-                ticks += 5; // Check every 0.25 seconds
+                // Timeout logic
+                if (secondsWaited >= TIMEOUT) {
+                    if (initiator.isOnline()) {
+                        initiator.sendMessage(ChatColor.RED + "Poker request timed out. You didn't approach the table.");
+                    }
+                    releaseDealer(); // Reset everything
+                    center = null;
+                    waitingForHost = false;
+                    this.cancel();
+                }
             }
-        }.runTaskTimer(LetsGambaPlugin.getInstance(), 0L, 5L);
+        }.runTaskTimer(LetsGambaPlugin.getInstance(), 0L, 20L);
     }
 
     private void releaseDealer() {
+        if (proximityTask != null && !proximityTask.isCancelled()) {
+            proximityTask.cancel();
+        }
+        waitingForHost = false;
+
         if (dealerId == null) return;
 
         Entity e = Bukkit.getEntity(dealerId);
@@ -811,35 +1041,60 @@ public class PokerTable {
         return new Location(blocks.get(0).getWorld(), totalX / blocks.size(), totalY / blocks.size(), totalZ / blocks.size());
     }
 
+    public Location getCenter() {
+        return center;
+    }
+
+    public boolean isLocationOverlapping(Location otherCenter) {
+        if (this.center == null || otherCenter == null) return false;
+        if (!this.center.getWorld().equals(otherCenter.getWorld())) return false;
+        return this.center.distance(otherCenter) < 6.0;
+    }
+
     // ---------- AFK CHECKER ----------
 
     public void startAfkChecker() {
         Bukkit.getScheduler().runTaskTimer(LetsGambaPlugin.getInstance(), () -> {
-            if (players.isEmpty()) return;
+            if (players.isEmpty() || center == null) return;
 
             long now = System.currentTimeMillis();
 
+            // Use a copy of values to avoid ConcurrentModificationException when removing players
             for (TablePlayer tp : new ArrayList<>(players.values())) {
                 Player p = tp.getOnlinePlayer();
-                if (p == null || !p.isOnline()) continue;
 
+                // 1. Check if player is offline
+                if (p == null || !p.isOnline()) {
+                    leave(tp.getOnlinePlayer()); // Use cached player object or UUID logic in leave
+                    continue;
+                }
+
+                // --- NEW DISTANCE CHECK ---
+                if (!p.getWorld().equals(center.getWorld()) || p.getLocation().distance(center) > 10.0) {
+                    p.sendMessage(ChatColor.RED + "You moved too far from the table and have left the game.");
+                    leave(p);
+                    continue;
+                }
+                // --------------------------
+
+                // 2. Existing Time Check
                 long inactiveMs = now - tp.getLastActionTime();
 
-// 1:30 to 3:00 → send warning ONCE
+                // 1:30 to 3:00 → send warning ONCE
                 if (inactiveMs >= 90_000 && inactiveMs < 180_000) {
                     if (!tp.isAfkWarned()) {
                         p.sendMessage(ChatColor.YELLOW + "You have been inactive for 1 minute 30 seconds.");
-                        p.sendMessage(ChatColor.YELLOW + "You will be removed from the poker table if inactive for 3 minutes.");
-                        tp.setAfkWarned(true); // mark as warned so we don't spam
+                        p.sendMessage(ChatColor.YELLOW + "You will be kicked from the poker table if inactive for 3 minutes.");
+                        tp.setAfkWarned(true);
                     }
                 }
 
-// 3:00+ → kick every check (fine, they’re already gone after first)
+                // 3:00+ → kick
                 if (inactiveMs >= 180_000) {
-                    p.sendMessage(ChatColor.RED + "You have been removed from the poker table for being AFK.");
+                    p.sendMessage(ChatColor.RED + "You have been kicked for being AFK.");
                     leave(p);
                 }
             }
-        }, 20L, 200L); // start after 1 second, repeat every 10s
+        }, 20L, 20L); // Checks every 1 second (20 ticks)
     }
 }

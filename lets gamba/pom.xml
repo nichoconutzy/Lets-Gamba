@@ -6,7 +6,7 @@
 
     <groupId>me.choconutzy</groupId>
     <artifactId>lets-gamba</artifactId>
-    <version>0.5.11</version>
+    <version>0.5.17b</version>
     <packaging>jar</packaging>
 
     <name>lets-gamba</name>
@@ -58,7 +58,7 @@
             <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
 
-        <!-- JitPack for VaultAPI -->
+        <!-- JitPack for VaultAPI and GSit-->
         <repository>
             <id>jitpack.io</id>
             <url>https://jitpack.io</url>
@@ -81,6 +81,14 @@
             <artifactId>VaultAPI</artifactId>
             <version>1.7</version>
             <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+        <groupId>dev.geco</groupId>
+        <artifactId>GSit</artifactId>
+        <version>3.0.1</version>
+        <scope>system</scope>
+        <systemPath>${project.basedir}/libs/GSit.jar</systemPath>
         </dependency>
     </dependencies>
 
