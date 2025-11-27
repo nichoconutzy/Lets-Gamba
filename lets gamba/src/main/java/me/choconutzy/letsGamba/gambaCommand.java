@@ -62,9 +62,29 @@ public class gambaCommand implements CommandExecutor {
             doCall(player);
             return true;
         }
-        // /poker raise | bet | r
-        if (sub.equals("raise") || sub.equals("bet") || sub.equals("r")) {
+        // /poker raise <amount> | bet | r
+        if (sub.equals("bet") || sub.equals("r")) {
             PokerManager.handleAction(player, PokerAction.RAISE);
+            return true;
+        }
+
+        if (sub.equals("raise")) {
+            if (args.length >= 2) {
+                try {
+                    java.math.BigDecimal raiseAmount = new java.math.BigDecimal(args[1]);
+                    me.choconutzy.letsGamba.PokerTable table = me.choconutzy.letsGamba.PokerManager.getTableOfPlayer(player);
+                    if (table != null) {
+                        table.handleCustomRaise(player, raiseAmount);
+                    } else {
+                        player.sendMessage(org.bukkit.ChatColor.RED + "You are not at a poker table.");
+                    }
+                } catch (NumberFormatException e) {
+                    player.sendMessage(org.bukkit.ChatColor.RED + "Invalid amount. Usage: /poker raise <amount>");
+                }
+            } else {
+                // Fallback for chat button clicks without amount
+                PokerManager.handleAction(player, PokerAction.RAISE);
+            }
             return true;
         }
 
