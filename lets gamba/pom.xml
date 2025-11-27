@@ -6,7 +6,7 @@
 
     <groupId>me.choconutzy</groupId>
     <artifactId>lets-gamba</artifactId>
-    <version>0.5.17b</version>
+    <version>0.5.18</version>
     <packaging>jar</packaging>
 
     <name>lets-gamba</name>

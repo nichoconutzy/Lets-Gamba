@@ -1,5 +1,6 @@
 package me.choconutzy.letsGamba;
 
+import me.choconutzy.letsGamba.Economy.EconomyProvider;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -15,6 +16,8 @@ import org.bukkit.entity.Villager.Profession;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 
 public class PokerTable {
@@ -33,6 +36,78 @@ public class PokerTable {
     private UUID currentPlayerId = null;
     public boolean hasPlayer(UUID uuid) {
         return players.containsKey(uuid);
+    }
+
+    // Economy Integration
+    private BigDecimal pot = BigDecimal.ZERO;
+    private BigDecimal currentBet = BigDecimal.ZERO;      // highest bet this street
+    private BigDecimal lastRaiseSize = BigDecimal.ZERO;   // size of last raise
+
+    private static final BigDecimal SMALL_BLIND = BigDecimal.valueOf(10);
+    private static final BigDecimal BIG_BLIND   = BigDecimal.valueOf(20);
+
+    private EconomyProvider eco() {
+        return LetsGambaPlugin.getEconomy();
+    }
+
+    private boolean chargePlayer(TablePlayer tp, BigDecimal amount) {
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) return true;
+
+        EconomyProvider eco = eco();
+        if (eco == null) {
+            Player p = tp.getOnlinePlayer();
+            if (p != null) {
+                p.sendMessage(ChatColor.RED + "Economy is not available. Bets are disabled.");
+            }
+            return false;
+        }
+
+        UUID id = tp.getUuid();
+
+        if (!eco.hasEnough(id, amount)) {
+            Player p = tp.getOnlinePlayer();
+            if (p != null) {
+                p.sendMessage(ChatColor.RED + "You don't have enough money to bet " + amount + ".");
+            }
+            return false;
+        }
+
+        if (!eco.subtract(id, amount)) {
+            Player p = tp.getOnlinePlayer();
+            if (p != null) {
+                p.sendMessage(ChatColor.RED + "Economy error – could not take your bet.");
+            }
+            return false;
+        }
+
+        pot = pot.add(amount);
+        tp.setBetThisRound(tp.getBetThisRound().add(amount));
+        return true;
+    }
+
+    private void payWinners(Iterable<TablePlayer> winners) {
+        if (pot.compareTo(BigDecimal.ZERO) <= 0) return;
+
+        EconomyProvider eco = eco();
+        if (eco == null) return;
+
+        int count = 0;
+        for (TablePlayer ignored : winners) {
+            count++;
+        }
+        if (count == 0) return;
+
+        BigDecimal share = pot.divide(BigDecimal.valueOf(count), RoundingMode.DOWN);
+
+        for (TablePlayer tp : winners) {
+            eco.add(tp.getUuid(), share);
+            Player p = tp.getOnlinePlayer();
+            if (p != null) {
+                p.sendMessage(ChatColor.GREEN + "You win " + share + " from the pot!");
+            }
+        }
+
+        pot = BigDecimal.ZERO;
     }
 
     // Table location + radius
@@ -119,6 +194,12 @@ public class PokerTable {
         viewer.sendMessage(ChatColor.AQUA + "Stage: "
                 + ChatColor.YELLOW + stage.name()
                 + (inHand ? ChatColor.GREEN + " (hand in progress)" : ChatColor.RED + " (no active hand)"));
+
+        // Add pot information
+        viewer.sendMessage(ChatColor.AQUA + "Current pot: "
+                + ChatColor.GOLD + pot
+                + ChatColor.AQUA + ", bet to call: "
+                + ChatColor.GOLD + currentBet);
     }
 
     // ---------- JOIN / LEAVE & RADIUS ----------
@@ -324,6 +405,10 @@ public class PokerTable {
         stage = GameStage.PRE_FLOP;
         board.clear();
         deck = new Deck();
+
+        pot = BigDecimal.ZERO;
+        currentBet = BigDecimal.ZERO;
+        lastRaiseSize = BigDecimal.ZERO;
         currentPlayerId = null;
 
         for (TablePlayer tp : players.values()) {
@@ -340,13 +425,60 @@ public class PokerTable {
             }
         }
 
-        broadcast(ChatColor.GREEN + "Pre-flop: players act in turn. Best hand wins the pot!");
+        broadcast(ChatColor.GREEN + "Pre-flop: players act in turn.");
+
+        // Apply blinds
+        applyBlinds();
 
         List<TablePlayer> active = getActivePlayersInOrder();
         if (!active.isEmpty()) {
-            currentPlayerId = active.get(0).getUuid();
+            int n = active.size();
+            int startIndex;
+
+            if (n >= 3) {
+                startIndex = 2 % n; // player after big blind
+            } else if (n == 2) {
+                startIndex = 0;     // heads-up: SB acts first
+            } else {
+                startIndex = 0;
+            }
+
+            currentPlayerId = active.get(startIndex).getUuid();
             announceTurn();
         }
+    }
+    // Blind Logic
+    private void applyBlinds() {
+        List<TablePlayer> active = getActivePlayersInOrder();
+        if (active.size() < 2) return;
+
+        TablePlayer small = active.get(0);
+        TablePlayer big   = active.get(1);
+
+        if (chargePlayer(small, SMALL_BLIND)) {
+            Player p = small.getOnlinePlayer();
+            if (p != null) {
+                p.sendMessage(ChatColor.YELLOW + "You post the small blind of " + SMALL_BLIND + ".");
+            }
+        }
+
+        if (chargePlayer(big, BIG_BLIND)) {
+            Player p = big.getOnlinePlayer();
+            if (p != null) {
+                p.sendMessage(ChatColor.YELLOW + "You post the big blind of " + BIG_BLIND + ".");
+            }
+        }
+
+        currentBet = BIG_BLIND;
+        lastRaiseSize = BIG_BLIND;
+
+        broadcast(ChatColor.GRAY + "Blinds posted: "
+                + ChatColor.YELLOW + small.getName() + ChatColor.GRAY + " (SB "
+                + SMALL_BLIND + "), "
+                + ChatColor.YELLOW + big.getName() + ChatColor.GRAY + " (BB "
+                + BIG_BLIND + ").");
+        broadcast(ChatColor.AQUA + "Current pot: " + ChatColor.GOLD + pot
+                + ChatColor.AQUA + ", bet to call: " + ChatColor.GOLD + currentBet);
     }
 
     // ---------- ACTION HANDLING (NO ECONOMY) ----------
@@ -376,26 +508,107 @@ public class PokerTable {
 
         tp.updateActivity();
 
+        BigDecimal playerBet = tp.getBetThisRound();
+
         switch (action) {
             case FOLD -> {
                 tp.setFolded(true);
                 tp.setActedThisStreet(true);
                 broadcast(ChatColor.RED + player.getName() + " folds.");
+                nextTurnOrStage();
             }
+
             case CHECK_OR_CALL -> {
-                tp.setActedThisStreet(true);
-                broadcast(ChatColor.YELLOW + player.getName() + " checks/calls.");
+                BigDecimal toCall = currentBet.subtract(playerBet);
+
+                if (toCall.compareTo(BigDecimal.ZERO) <= 0) {
+                    tp.setActedThisStreet(true);
+                    broadcast(ChatColor.YELLOW + player.getName() + " checks.");
+                    nextTurnOrStage();
+                } else {
+                    if (!chargePlayer(tp, toCall)) {
+                        player.sendMessage(ChatColor.RED + "You cannot call and have been folded.");
+                        tp.setFolded(true);
+                        tp.setActedThisStreet(true);
+                        nextTurnOrStage();
+                    } else {
+                        tp.setActedThisStreet(true);
+                        broadcast(ChatColor.YELLOW + player.getName() + " calls " + toCall + ".");
+                        nextTurnOrStage();
+                    }
+                }
             }
+
             case RAISE -> {
-                tp.setActedThisStreet(true);
-                broadcast(ChatColor.GREEN + player.getName() + " raises (abstract, no chips yet).");
+                BigDecimal minRaise = lastRaiseSize.max(BIG_BLIND);
+                BigDecimal newBet   = currentBet.add(minRaise);
+                BigDecimal toPay    = newBet.subtract(playerBet);
+
+                if (!chargePlayer(tp, toPay)) {
+                    player.sendMessage(ChatColor.RED + "You cannot afford the minimum raise. Treated as fold.");
+                    tp.setFolded(true);
+                    tp.setActedThisStreet(true);
+                    nextTurnOrStage();
+                } else {
+                    currentBet = newBet;
+                    lastRaiseSize = minRaise;
+                    tp.setActedThisStreet(true);
+                    broadcast(ChatColor.GREEN + player.getName() + " raises to " + currentBet + ".");
+                    nextTurnOrStage();
+                }
             }
         }
-
-        nextTurnOrStage();
     }
 
     // ---------- TURN / STREET LOGIC ----------
+
+    // Add handleCustomRaise method
+    public void handleCustomRaise(Player player, BigDecimal raiseToTotal) {
+        if (!inHand) {
+            player.sendMessage(ChatColor.RED + "No active hand. Use /poker to start or join.");
+            return;
+        }
+
+        TablePlayer tp = players.get(player.getUniqueId());
+        if (tp == null || tp.isFolded()) {
+            player.sendMessage(ChatColor.RED + "You are not in this hand.");
+            return;
+        }
+
+        if (!player.getUniqueId().equals(currentPlayerId)) {
+            player.sendMessage(ChatColor.RED + "It is not your turn.");
+            player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+            return;
+        }
+
+        tp.updateActivity();
+
+        BigDecimal playerBet = tp.getBetThisRound();
+
+        BigDecimal minTotal = currentBet.add(lastRaiseSize.max(BIG_BLIND));
+        if (raiseToTotal.compareTo(minTotal) < 0) {
+            player.sendMessage(ChatColor.RED + "Your raise must be at least the minimum raise above the current bet.");
+            return;
+        }
+
+        BigDecimal toPay = raiseToTotal.subtract(playerBet);
+        if (toPay.compareTo(BigDecimal.ZERO) <= 0) {
+            player.sendMessage(ChatColor.RED + "You are already at or above that amount.");
+            return;
+        }
+
+        if (!chargePlayer(tp, toPay)) {
+            player.sendMessage(ChatColor.RED + "You cannot afford that raise.");
+            return;
+        }
+
+        lastRaiseSize = raiseToTotal.subtract(currentBet);
+        currentBet = raiseToTotal;
+        tp.setActedThisStreet(true);
+
+        broadcast(ChatColor.GREEN + player.getName() + " raises to " + currentBet + " (custom).");
+        nextTurnOrStage();
+    }
 
     private void nextTurnOrStage() {
         List<TablePlayer> active = getActivePlayersInOrder();
@@ -405,6 +618,7 @@ public class PokerTable {
                 TablePlayer winner = active.get(0);
                 broadcast(ChatColor.GREEN + winner.getName()
                         + " wins the pot (everyone else folded).");
+                payWinners(Collections.singletonList(winner));
                 Player wp = winner.getOnlinePlayer();
                 if (wp != null) {
                     wp.playSound(wp.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.2f);
@@ -542,6 +756,9 @@ public class PokerTable {
                 + "the pot with "
                 + ChatColor.GOLD + handName + ChatColor.GREEN + "!");
 
+        // Pay winners
+        payWinners(winners);
+
         for (TablePlayer tp : players.values()) {
             Player p = tp.getOnlinePlayer();
             if (p == null || !p.isOnline()) continue;
@@ -584,6 +801,11 @@ public class PokerTable {
         inHand = false;
         stage = GameStage.FINISHED;
         currentPlayerId = null;
+
+        // Reset betting variables
+        pot = BigDecimal.ZERO;
+        currentBet = BigDecimal.ZERO;
+        lastRaiseSize = BigDecimal.ZERO;
 
         int playerCount = players.size();
 
