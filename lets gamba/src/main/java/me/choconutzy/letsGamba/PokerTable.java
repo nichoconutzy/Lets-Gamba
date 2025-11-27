@@ -604,7 +604,10 @@ public class PokerTable {
         }
 
         if (!chargePlayer(tp, toPay)) {
-            player.sendMessage(ChatColor.RED + "You cannot afford that raise.");
+            player.sendMessage(ChatColor.RED + "You cannot afford that raise. Treated as fold.");
+            tp.setFolded(true);
+            tp.setActedThisStreet(true);
+            nextTurnOrStage();
             return;
         }
 
