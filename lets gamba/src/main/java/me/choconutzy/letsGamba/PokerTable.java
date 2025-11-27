@@ -348,6 +348,7 @@ public class PokerTable {
         }
 
         broadcast(ChatColor.YELLOW + player.getName() + " left the poker table.");
+        player.sendMessage(ChatColor.RED + "You have left the poker table.");
 
         if (inHand && !tp.isFolded()) {
             tp.setFolded(true);
@@ -687,7 +688,10 @@ public class PokerTable {
             case RIVER -> {
                 stage = GameStage.SHOWDOWN;
                 doShowdownPvP();
-                endHand();
+                // ⏱ wait 4 seconds before ending the hand
+                Bukkit.getScheduler().runTaskLater(LetsGambaPlugin.getInstance(), () -> {
+                    endHand();
+                }, 80L); // 20 ticks = 1 second → 80 ticks = 4 seconds
                 return;
             }
             default -> {}
