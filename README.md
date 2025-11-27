@@ -20,7 +20,7 @@ Java
 * ~~Add Big blind and small blind betting along with mid-round custom bet/raise~~
 * Add a "You left the table." in red once /poker leave is typed
 * All-in button
-* 5sec Pre-game countdown
+* 5sec Pre-game countdown (done i think)
 * If previous player raised/bet ==> next player must bet same amount/raise/fold
 * Poker game to start when /poker start is typed. Make sure to check for a minimum of 2 players and maximum of 6.
-* Optional show cards last 4 seconds after pot is paid
+* Optional show cards last 4 seconds after pot is paid (not tested)
