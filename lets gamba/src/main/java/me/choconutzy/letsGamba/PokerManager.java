@@ -103,6 +103,16 @@ public class PokerManager {
         }
     }
 
+    // --- ALL IN ---
+    public static void allIn(Player player) {
+        PokerTable table = getTableOfPlayer(player);
+        if (table == null) {
+            player.sendMessage(ChatColor.RED + "You are not seated at any poker table.");
+            return;
+        }
+        table.handleAllIn(player);
+    }
+
     // --- UTILS ---
 
     public static PokerTable getTableOfPlayer(Player player) {

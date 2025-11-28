@@ -567,6 +567,40 @@ public class PokerTable {
         }
     }
 
+    //--- all in ---
+    public void handleAllIn(Player player) {
+
+        if (!inHand) {
+            player.sendMessage(ChatColor.RED + "No active hand. Use /poker to start or join.");
+            return;
+        }
+        TablePlayer tp = players.get(player.getUniqueId());
+        if (tp == null || tp.isFolded()) {
+            player.sendMessage(ChatColor.RED + "You are not in this hand.");
+            return;
+        }
+        if (tp.isAllIn()) {
+            player.sendMessage(ChatColor.RED + "You are already all-in.");
+            return;
+        }
+        if (!player.getUniqueId().equals(currentPlayerId)) {
+            player.sendMessage(ChatColor.RED + "It is not your turn.");
+            player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+            return;
+        }
+        tp.updateActivity();
+        EconomyProvider eco = eco();
+        if (eco == null) {
+            player.sendMessage(ChatColor.RED + "Economy is not available.");
+            return;
+        }
+
+        UUID id = tp.getUuid();
+
+        // TODO: here we need eco.getBalance(id) or some way to know how much money they have
+        // For now, leave this part empty or commented until we wire in getBalance(...)
+    }
+
     // ---------- TURN / STREET LOGIC ----------
 
     // Add handleCustomRaise method

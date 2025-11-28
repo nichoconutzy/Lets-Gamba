@@ -1,5 +1,5 @@
 name: letsgamba
-version: '0.5.19'
+version: '0.5.21'
 main: me.choconutzy.letsGamba.LetsGambaPlugin
 api-version: '1.21.10'
 depend: [Vault]

@@ -88,6 +88,12 @@ public class gambaCommand implements CommandExecutor {
             return true;
         }
 
+        // /poker allin
+        if (sub.equals("allin") || sub.equals("all-in") || sub.equals("ai")) {
+            PokerManager.allIn(player);
+            return true;
+        }
+
         // Unknown usage
         player.sendMessage(ChatColor.RED + "Unknown poker command. Usage:");
         player.sendMessage(ChatColor.RED + "/poker " + ChatColor.GRAY + "(Host a new table)");
