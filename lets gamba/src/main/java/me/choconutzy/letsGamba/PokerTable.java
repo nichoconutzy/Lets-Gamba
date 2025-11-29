@@ -596,9 +596,40 @@ public class PokerTable {
         }
 
         UUID id = tp.getUuid();
+        // How much money does the player have in Vault/Essentials?
+        BigDecimal wallet = eco.getBalance(id);
+        if (wallet == null || wallet.compareTo(BigDecimal.ZERO) <= 0) {
+            player.sendMessage(ChatColor.RED + "You have no money to go all-in with.");
+            return;
+        }
+        BigDecimal playerBet = tp.getBetThisRound();
+        BigDecimal amountToBet = wallet; // bet entire wallet for now
 
-        // TODO: here we need eco.getBalance(id) or some way to know how much money they have
-        // For now, leave this part empty or commented until we wire in getBalance(...)
+        // Take the money + add to pot using existing chargePlayer()
+        if (!chargePlayer(tp, amountToBet)) {
+            player.sendMessage(ChatColor.RED + "Economy error – could not go all-in.");
+            return;
+        }
+
+        tp.setAllIn(true);
+
+        BigDecimal newTotalBet = playerBet.add(amountToBet);
+
+        // If this is higher than currentBet, it's a raise
+        if (newTotalBet.compareTo(currentBet) > 0) {
+            lastRaiseSize = newTotalBet.subtract(currentBet);
+            currentBet = newTotalBet;
+
+            broadcast(ChatColor.GOLD + player.getName() + ChatColor.GREEN +
+                    " goes ALL IN for " + ChatColor.GOLD + newTotalBet + ChatColor.GREEN + "!");
+        } else {
+            // All-in just to call / match
+            broadcast(ChatColor.GOLD + player.getName() + ChatColor.GREEN +
+                    " goes ALL IN for " + ChatColor.GOLD + newTotalBet +
+                    ChatColor.GREEN + " (call).");
+        }
+        tp.setActedThisStreet(true);
+        nextTurnOrStage();
     }
 
     // ---------- TURN / STREET LOGIC ----------
@@ -1031,7 +1062,7 @@ public class PokerTable {
 
     private void remindAllPlayersOfHands() {
         for (TablePlayer tp : players.values()) {
-            if (tp.isFolded()) continue;
+            if (tp.isFolded() || tp.isAllIn()) continue;
 
             Player p = tp.getOnlinePlayer();
             if (p == null || !p.isOnline()) continue;

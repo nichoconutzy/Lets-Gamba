@@ -75,6 +75,11 @@ public class VaultEconomyProvider implements EconomyProvider {
     }
 
     @Override
+    public boolean isEnabled() {
+        return enabled && economy != null;
+    }
+
+    @Override
     public String getProviderName() {
         return enabled && economy != null ? economy.getName() : "None";
     }

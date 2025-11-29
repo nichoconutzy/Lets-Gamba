@@ -4,6 +4,9 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 public interface EconomyProvider {
+
+    boolean isEnabled();
+
     boolean hasEnough(UUID playerUuid, BigDecimal amount);
 
     boolean add(UUID playerUuid, BigDecimal amount);
@@ -13,4 +16,5 @@ public interface EconomyProvider {
     BigDecimal getBalance(UUID playerUuid);
 
     String getProviderName();
+
 }
