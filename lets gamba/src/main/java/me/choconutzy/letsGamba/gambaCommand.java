@@ -67,7 +67,6 @@ public class gambaCommand implements CommandExecutor {
             PokerManager.handleAction(player, PokerAction.RAISE);
             return true;
         }
-
         if (sub.equals("raise")) {
             if (args.length >= 2) {
                 try {
@@ -87,6 +86,13 @@ public class gambaCommand implements CommandExecutor {
             }
             return true;
         }
+
+        // /poker showhand
+        if (sub.equalsIgnoreCase("showhand") || sub.equalsIgnoreCase("show")) {
+            PokerManager.requestShowHand(player);
+            return true;
+        }
+
 
         // /poker allin
         if (sub.equals("allin") || sub.equals("all-in") || sub.equals("ai")) {

@@ -46,7 +46,6 @@ public class PokerManager {
     }
 
     // --- JOINING ---
-
     public static void joinTable(Player player, String arg) {
         PokerTable existing = getTableOfPlayer(player);
         if (existing != null) {
@@ -80,7 +79,6 @@ public class PokerManager {
     }
 
     // --- LEAVING ---
-
     public static void leaveTable(Player player) {
         PokerTable table = getTableOfPlayer(player);
         if (table != null) {
@@ -93,7 +91,6 @@ public class PokerManager {
     }
 
     // --- ACTIONS ---
-
     public static void handleAction(Player player, PokerAction action) {
         PokerTable table = getTableOfPlayer(player);
         if (table != null) {
@@ -102,6 +99,19 @@ public class PokerManager {
             player.sendMessage(ChatColor.RED + "You are not in a game.");
         }
     }
+
+    // --- SHOW HAND ---
+    public static void requestShowHand(Player player) {
+        PokerTable table = getTableOfPlayer(player);
+
+        if (table == null) {
+            player.sendMessage(ChatColor.RED + "You are not seated at any poker table.");
+            return;
+        }
+
+        table.requestShowHand(player);
+    }
+
 
     // --- ALL IN ---
     public static void allIn(Player player) {

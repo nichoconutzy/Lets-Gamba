@@ -16,6 +16,11 @@ import org.bukkit.entity.Villager.Profession;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
 
+import net.md_5.bungee.api.chat.TextComponent;
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.HoverEvent;
+import net.md_5.bungee.api.chat.ComponentBuilder;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
@@ -31,6 +36,8 @@ public class PokerTable {
     private final List<Card> board = new ArrayList<>();
     private GameStage stage = GameStage.PRE_FLOP;
     private boolean inHand = false;
+    // whether players are allowed to reveal their hand right now
+    private boolean revealWindow = false;
 
     // whose turn is it
     private UUID currentPlayerId = null;
@@ -753,6 +760,23 @@ public class PokerTable {
             case RIVER -> {
                 stage = GameStage.SHOWDOWN;
                 doShowdownPvP();
+
+                // enable 4-second window to show hands
+                revealWindow = true;
+                broadcast(ChatColor.GRAY + "You have " + ChatColor.GOLD + "4 seconds" +
+                        ChatColor.GRAY + " to type " + ChatColor.YELLOW + "/poker showhand" +
+                        ChatColor.GRAY + " if you want to reveal your cards.");
+                for (TablePlayer tp : players.values()) {
+                    Player p = tp.getOnlinePlayer();
+                    if (p == null) continue;
+
+                    TextComponent base = new TextComponent(ChatColor.GOLD + "[SHOW HAND]");
+                    base.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/poker showhand"));
+                    base.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                            new ComponentBuilder(ChatColor.YELLOW + "Reveal your cards to the table").create()));
+
+                    p.spigot().sendMessage(base);
+                }
                 // ⏱ wait 4 seconds before ending the hand
                 Bukkit.getScheduler().runTaskLater(LetsGambaPlugin.getInstance(), () -> {
                     endHand();
@@ -769,7 +793,37 @@ public class PokerTable {
         }
     }
 
-    // ---------- SHOWDOWN (NO ECONOMY) ----------
+    //--- show hand ---
+    public void requestShowHand(Player player) {
+        if (!inHand) {
+            player.sendMessage(ChatColor.RED + "There is no active hand.");
+            return;
+        }
+        if (!revealWindow) {
+            player.sendMessage(ChatColor.RED + "You can only show your hand right after the pot is awarded.");
+            return;
+        }
+
+        TablePlayer tp = players.get(player.getUniqueId());
+        if (tp == null) {
+            player.sendMessage(ChatColor.RED + "You are not seated at this table.");
+            return;
+        }
+
+        Card[] hand = tp.getHand();
+        if (hand == null || hand.length < 2) {
+            player.sendMessage(ChatColor.RED + "You have no cards to show.");
+            return;
+        }
+
+        // broadcast to everyone at the table
+        broadcast(ChatColor.GOLD + player.getName() + ChatColor.GRAY +
+                " shows " + ChatColor.AQUA + cardText(hand[0]) +
+                ChatColor.GRAY + " and " + ChatColor.AQUA + cardText(hand[1]) + ChatColor.GRAY + ".");
+    }
+
+
+    // ---------- SHOWDOWN ----------
 
     private void doShowdownPvP() {
         broadcast(ChatColor.LIGHT_PURPLE + "Showdown! PvP – best hand wins.");
