@@ -5,16 +5,16 @@ import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
 public class PokerManager {
-
     private static final Map<Integer, PokerTable> tables = new HashMap<>();
     private static int nextTableId = 1;
 
-    // --- HOSTING ---
+// --- HOSTING ---
 
     public static void hostTable(Player player) {
         // Check if player is already playing
@@ -41,7 +41,6 @@ public class PokerManager {
 
             tables.put(nextTableId, newTable);
             player.sendMessage(ChatColor.GREEN + "Table #" + nextTableId + " initialized!");
-            newTable.join(player);
             nextTableId++;
         }
     }
@@ -124,7 +123,7 @@ public class PokerManager {
         table.handleAllIn(player);
     }
 
-    // --- UTILS ---
+// --- UTILS ---
 
     public static PokerTable getTableOfPlayer(Player player) {
         for (PokerTable table : tables.values()) {
@@ -133,6 +132,14 @@ public class PokerManager {
             }
         }
         return null;
+    }
+
+    /**
+     * Required for PokerRegionListener to iterate all active tables
+     * to check if a player walked into one.
+     */
+    public static Collection<PokerTable> getActiveTables() {
+        return tables.values();
     }
 
     // Find table by block (For GSit)
@@ -150,7 +157,8 @@ public class PokerManager {
         double minDist = Double.MAX_VALUE;
 
         for (PokerTable table : tables.values()) {
-            if (table.nitwitDealer.getCenter() == null || !table.nitwitDealer.getCenter().getWorld().equals(loc.getWorld())) continue;
+            if (table.nitwitDealer.getCenter() == null || !table.nitwitDealer.getCenter().getWorld().equals(loc.getWorld()))
+                continue;
 
             double dist = table.nitwitDealer.getCenter().distance(loc);
             if (dist < 20.0 && dist < minDist) { // 20 blocks search radius

@@ -5,6 +5,7 @@ import me.choconutzy.letsGamba.Economy.EconomyProvider;
 import me.choconutzy.letsGamba.LetsGambaPlugin;
 import me.choconutzy.letsGamba.handLogic.*;
 import me.choconutzy.letsGamba.pokerLogic.nitwitDealer;
+
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -15,7 +16,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
-import org.bukkit.entity.Villager; // Added for Nitwit Integration
+import org.bukkit.entity.Villager;
 import org.bukkit.entity.Villager.Profession;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
@@ -35,7 +36,6 @@ public class PokerTable {
     private final int tableId; // Table ID
     private final LinkedHashMap<UUID, TablePlayer> players = new LinkedHashMap<>();
     private final List<Block> tableBlocks = new ArrayList<>();
-
     private Deck deck;
     private final List<Card> board = new ArrayList<>();
     private GameStage stage = GameStage.PRE_FLOP;
@@ -139,6 +139,8 @@ public class PokerTable {
 
     // Max players at table
     private static final int MAX_PLAYERS = 6;
+    // Auto start threshold (per request: 3 players)
+    private static final int AUTO_START_PLAYERS = 3;
 
     public PokerTable(int tableId) {
         this.tableId = tableId;
@@ -154,7 +156,7 @@ public class PokerTable {
         return tableBlocks.contains(b);
     }
 
-    // ---------- BASIC INFO HELPERS ----------
+// ---------- BASIC INFO HELPERS ----------
 
     public boolean isEmpty() {
         return players.isEmpty();
@@ -215,6 +217,68 @@ public class PokerTable {
                 + ChatColor.GOLD + currentBet);
     }
 
+// ---------- BOUNDING BOX DETECTION 5x4(3x2) ----------
+    public boolean isInsideTableArea(Player p) {
+        if (nitwitDealer.getTableBlocks().isEmpty()) return false;
+        if (p.getWorld() != nitwitDealer.getTableBlocks().get(0).getWorld()) return false;
+
+        // Calculate bounds dynamically based on current wool blocks
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+        int tableY = nitwitDealer.getTableBlocks().get(0).getY();
+
+        for (Block b : nitwitDealer.getTableBlocks()) {
+            minX = Math.min(minX, b.getX());
+            maxX = Math.max(maxX, b.getX());
+            minZ = Math.min(minZ, b.getZ());
+            maxZ = Math.max(maxZ, b.getZ());
+        }
+
+        // Expand by 1 block in X and Z directions to create the "5x4" box around the 3x2 table
+        // A 3x2 table becomes (3+2)x(2+2) = 5x4.
+        minX -= 1;
+        maxX += 1;
+        minZ -= 1;
+        maxZ += 1;
+
+        Location pLoc = p.getLocation();
+        int px = pLoc.getBlockX();
+        int py = pLoc.getBlockY();
+        int pz = pLoc.getBlockZ();
+
+        // Check horizontal bounds
+        if (px >= minX && px <= maxX && pz >= minZ && pz <= maxZ) {
+            // Check vertical bounds (allow being slightly above/below table height, e.g., sitting or standing)
+            // Table is usually ground level, so check player feet +1/-1 tolerance
+            if (py >= tableY - 1 && py <= tableY + 2) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void tryAutoStart() { // Just a public wrapper to trigger timer if conditions are met
+        if (players.size() >= AUTO_START_PLAYERS && !inHand && restartTask == null) {
+            broadcast(ChatColor.GREEN + "Minimum players reached (" + AUTO_START_PLAYERS + "). Starting hand in 10 seconds...");
+
+            restartTask = new BukkitRunnable() {
+                int countdown = 10;
+
+                @Override
+                public void run() {
+                    if (countdown > 0) {
+                        broadcast(ChatColor.YELLOW + String.valueOf(countdown) + "...");
+                        countdown--;
+                    } else {
+                        restartTask = null;
+                        startNewHand(); // Triggers the game start
+                        this.cancel();
+                    }
+                }
+            }.runTaskTimer(LetsGambaPlugin.getInstance(), 0L, 20L);
+        }
+    }
     // ---------- JOIN / LEAVE & RADIUS ----------
     public void hostTable(Player player) {
         // Detect and fix corrupted state where flags are true but dealer entity is invalid
@@ -271,6 +335,14 @@ public class PokerTable {
         return nitwitDealer.setupDealerAndTable(player);
     }
 
+    public void activateTable(Location center, List<Block> blocks, UUID dealerId) {
+        this.center = center;
+        this.tableBlocks.clear();
+        this.tableBlocks.addAll(blocks);
+        this.dealerId = dealerId;
+        this.waitingForHost = false;
+    }
+
     public void join(Player player) {
         // 1. Prevent joining if table isn't set up yet
         if (center == null) {
@@ -290,7 +362,7 @@ public class PokerTable {
             return;
         }
 
-        // 3. Radius Check
+        // 3. Radius Check (Still keeping max radius, but specific box check handled by RegionListener)
         double dist = player.getLocation().distance(center);
         if (dist > JOIN_RADIUS_MAX) {
             player.sendMessage(ChatColor.RED + "You are not in range of the poker table.");
@@ -323,32 +395,15 @@ public class PokerTable {
             int count = getSeatCount();
             broadcast(ChatColor.GRAY + "Players seated: " + ChatColor.GOLD + count);
 
-            if (players.size() < 2) {
-                player.sendMessage(ChatColor.GRAY + "Waiting for at least one more player to join with /poker join.");
+            if (players.size() < AUTO_START_PLAYERS) {
+                player.sendMessage(ChatColor.GRAY + "Waiting for " + (AUTO_START_PLAYERS - players.size()) + " more player(s) to start.");
             }
         } else {
             player.sendMessage(ChatColor.YELLOW + "You are already seated at this table.");
         }
-        // Autostart Timer
-        if (players.size() >= 2 && !inHand && restartTask == null) {
-            broadcast(ChatColor.GREEN + "Minimum players reached. Starting hand in 10 seconds...");
 
-            restartTask = new BukkitRunnable() {
-                int countdown = 10;
-
-                @Override
-                public void run() {
-                    if (countdown > 0) {
-                        broadcast(ChatColor.YELLOW + String.valueOf(countdown) + "...");
-                        countdown--;
-                    } else {
-                        restartTask = null;
-                        startNewHand(); // Triggers the game start
-                        this.cancel();
-                    }
-                }
-            }.runTaskTimer(LetsGambaPlugin.getInstance(), 0L, 20L); // Run immediately, then every second
-        }
+        // 6. Attempt Autostart if we hit the threshold (3 players)
+        tryAutoStart();
     }
 
     public void leave(Player player) {
@@ -356,7 +411,8 @@ public class PokerTable {
         TablePlayer tp = players.remove(id);
 
         if (tp == null) {
-            player.sendMessage(ChatColor.RED + "You are not seated at this table.");
+            // Can be silent if called by RegionListener repeatedly, but here we usually want feedback
+            // player.sendMessage(ChatColor.RED + "You are not seated at this table.");
             return;
         }
 
@@ -369,6 +425,13 @@ public class PokerTable {
             }
         }
 
+        // If player count drops below threshold, cancel start timer
+        if (players.size() < AUTO_START_PLAYERS && restartTask != null) {
+            restartTask.cancel();
+            restartTask = null;
+            broadcast(ChatColor.RED + "Player left. Not enough players (" + AUTO_START_PLAYERS + " needed) to start. Auto-start cancelled.");
+        }
+
         if (inHand && players.size() < 2) {
             broadcast(ChatColor.RED + "Not enough players to continue. Hand ended.");
             endHand();
@@ -379,19 +442,7 @@ public class PokerTable {
             nitwitDealer.releaseDealer();
             center = null;
         }
-        if (players.size() < 2) {
-            // If a restart timer was running, cancel it because we lost too many players
-            if (restartTask != null) {
-                restartTask.cancel();
-                restartTask = null;
-                broadcast(ChatColor.RED + "Not enough players to continue. Auto-start cancelled.");
-            }
 
-            if (inHand) {
-                broadcast(ChatColor.RED + "Not enough players to continue. Hand ended.");
-                endHand();
-            }
-        }
         if (players.isEmpty()) {
             forceCleanup(); // Releases the Dealer entity
             PokerManager.removeTable(this.tableId); // Removes from Manager Map
@@ -410,7 +461,7 @@ public class PokerTable {
         center = null;
     }
 
-    // ---------- START HAND ----------
+// ---------- START HAND ----------
 
     private void startNewHand() {
         // Check system
@@ -500,7 +551,7 @@ public class PokerTable {
                 + ChatColor.AQUA + ", bet to call: " + ChatColor.GOLD + currentBet);
     }
 
-    // ---------- ACTION HANDLING (NO ECONOMY) ----------
+// ---------- ACTION HANDLING (NO ECONOMY) ----------
 
     public void handleAction(Player player, PokerAction action) {
         if (!inHand) {
@@ -654,7 +705,7 @@ public class PokerTable {
         nextTurnOrStage();
     }
 
-    // ---------- TURN / STREET LOGIC ----------
+// ---------- TURN / STREET LOGIC ----------
 
     // Add handleCustomRaise method
     public void handleCustomRaise(Player player, BigDecimal raiseToTotal) {
@@ -856,7 +907,7 @@ public class PokerTable {
     }
 
 
-    // ---------- SHOWDOWN ----------
+// ---------- SHOWDOWN ----------
 
     private void doShowdownPvP() {
         broadcast(ChatColor.LIGHT_PURPLE + "Showdown! PvP – best hand wins.");
@@ -974,7 +1025,7 @@ public class PokerTable {
 
         int playerCount = players.size();
 
-        if (playerCount < 2) {
+        if (playerCount < AUTO_START_PLAYERS) {
             broadcast(ChatColor.RED + "Waiting for more players to join to start the next hand...");
             broadcast(ChatColor.GRAY + "Current players: " + playerCount + "/6. Use /poker join.");
         } else {
@@ -991,7 +1042,7 @@ public class PokerTable {
                     restartTask = null; // Clear the variable when it runs
 
                     // Safety checks
-                    if (players.size() < 2) {
+                    if (players.size() < AUTO_START_PLAYERS) {
                         broadcast(ChatColor.RED + "Not enough players to start the next hand.");
                         return;
                     }
@@ -1003,7 +1054,7 @@ public class PokerTable {
         }
     }
 
-    // ---------- TURN HELPERS ----------
+// ---------- TURN HELPERS ----------
 
     private List<TablePlayer> getActivePlayersInOrder() {
         List<TablePlayer> active = new ArrayList<>();
@@ -1092,7 +1143,7 @@ public class PokerTable {
     }
 
 
-    // ---------- BROADCAST HELPERS ----------
+// ---------- BROADCAST HELPERS ----------
 
     private void broadcast(String msg) {
         for (TablePlayer tp : players.values()) {
@@ -1114,7 +1165,7 @@ public class PokerTable {
         broadcast(sb.toString());
     }
 
-    // ---------- CARD DISPLAY ----------
+// ---------- CARD DISPLAY ----------
 
     private String cardText(Card c) {
         String suitSymbol;
@@ -1160,9 +1211,9 @@ public class PokerTable {
         }
     }
 
-    // ---------- DEALER / NITWIT LOGIC ----------
-    // MOVED TO nitwitDealer.java
-    // ---------- AFK CHECKER ----------
+// ---------- DEALER / NITWIT LOGIC ----------
+// MOVED TO nitwitDealer.java; bomboclaat
+// ---------- AFK CHECKER ----------
 
     public void startAfkChecker() {
         Bukkit.getScheduler().runTaskTimer(LetsGambaPlugin.getInstance(), () -> {
@@ -1181,8 +1232,11 @@ public class PokerTable {
                 }
 
                 // --- NEW DISTANCE CHECK ---
-                if (!p.getWorld().equals(center.getWorld()) || p.getLocation().distance(center) > 10.0) {
-                    p.sendMessage(ChatColor.RED + "You moved too far from the table and have left the game.");
+                // If they wander outside the detection box, kick them
+                // We use isInsideTableArea for strict checking, or a slightly larger radius for tolerance
+                if (!isInsideTableArea(p)) {
+                    // Maybe a slight grace distance, but strictly leaving the box implies leaving the table
+                    p.sendMessage(ChatColor.RED + "You left the table area and have left the game.");
                     leave(p);
                     continue;
                 }

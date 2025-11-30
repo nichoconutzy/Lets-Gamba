@@ -344,8 +344,12 @@ public class nitwitDealer {
                             + ChatColor.YELLOW + center.getBlockX() + ", " + center.getBlockY() + ", " + center.getBlockZ()
                             + ChatColor.GREEN + "! Use " + ChatColor.GOLD + "/poker join" + ChatColor.GREEN + " to join the table.");
 
+                    // Synchronize pokerTable and nitwitDealer (deal!)
+                    pokerTable.activateTable(center, tableBlocks, dealerId);
                     // Call back to PokerTable to handle the join
-                    pokerTable.join(initiator);
+                    Bukkit.getScheduler().runTaskLater(LetsGambaPlugin.getInstance(), () -> {
+                        pokerTable.join(initiator);
+                    }, 5L); // small delay ensures the table has finalized
 
                     this.cancel();
                     return;
