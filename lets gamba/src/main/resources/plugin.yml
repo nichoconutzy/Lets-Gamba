@@ -1,5 +1,5 @@
 name: letsgamba
-version: '0.6'
+version: '0.6.1'
 main: me.choconutzy.letsGamba.LetsGambaPlugin
 api-version: '1.21.10'
 depend: [Vault]
@@ -7,7 +7,7 @@ softdepend: [GSit]
 
 commands:
   poker:
-    description: Play Ultimate Texas Hold'em!
+    description: Play Texas Hold'em!
     usage: "/poker [join|leave|fold|call|raise|info]"
     aliases: [check, call, fold, raise]
 

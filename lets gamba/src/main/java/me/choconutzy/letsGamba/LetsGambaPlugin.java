@@ -1,5 +1,7 @@
 package me.choconutzy.letsGamba;
 
+import me.choconutzy.letsGamba.Commands.GSitListener;
+import me.choconutzy.letsGamba.Commands.gambaCommand;
 import me.choconutzy.letsGamba.Economy.EconomyProvider;
 import me.choconutzy.letsGamba.Economy.VaultEconomyProvider;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -27,7 +29,7 @@ public final class LetsGambaPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        PokerManager.shutdownAll();
+        me.choconutzy.letsGamba.pokerLogic.PokerManager.shutdownAll();
         getLogger().info("PokerUltimateTexasHoldem disabled!");
     }
     public static LetsGambaPlugin getInstance() {
