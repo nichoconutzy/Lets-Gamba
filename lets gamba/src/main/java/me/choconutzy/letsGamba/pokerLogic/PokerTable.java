@@ -764,22 +764,36 @@ public class PokerTable {
                 broadcastBoard();
                 remindAllPlayersOfHands();
             }
-            case FLOP -> {
-                board.add(deck.draw());
-                board.add(deck.draw());
-                stage = GameStage.RIVER;
 
-                broadcast(ChatColor.GREEN + "Turn and River dealt:");
+            case FLOP -> {
+                // deal TURN – 1 card
+                board.add(deck.draw());
+
+                stage = GameStage.TURN;
+
+                broadcast(ChatColor.GREEN + "Turn is dealt:");
                 broadcastBoard();
                 remindAllPlayersOfHands();
             }
+
+            case TURN -> {
+                // deal RIVER – 1 card
+                board.add(deck.draw());
+
+                stage = GameStage.RIVER;
+
+                broadcast(ChatColor.GREEN + "River is dealt:");
+                broadcastBoard();
+                remindAllPlayersOfHands();
+            }
+
             case RIVER -> {
                 stage = GameStage.SHOWDOWN;
                 doShowdownPvP();
 
                 // enable 4-second window to show hands
                 revealWindow = true;
-                broadcast(ChatColor.GRAY + "You have " + ChatColor.GOLD + "4 seconds" +
+                broadcast(ChatColor.GRAY + "You have " + ChatColor.GOLD + "7 seconds" +
                         ChatColor.GRAY + " to type " + ChatColor.YELLOW + "/poker showhand" +
                         ChatColor.GRAY + " if you want to reveal your cards.");
                 for (TablePlayer tp : players.values()) {
@@ -793,10 +807,10 @@ public class PokerTable {
 
                     p.spigot().sendMessage(base);
                 }
-                // ⏱ wait 4 seconds before ending the hand
+                // ⏱ wait 7 seconds before ending the hand
                 Bukkit.getScheduler().runTaskLater(LetsGambaPlugin.getInstance(), () -> {
                     endHand();
-                }, 140L); // 20 ticks = 1 second → 80 ticks = 4 seconds
+                }, 140L); // 20 ticks = 1 second → 80 ticks = 7 seconds
                 return;
             }
             default -> {}
