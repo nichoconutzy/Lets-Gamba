@@ -24,13 +24,13 @@ public final class LetsGambaPlugin extends JavaPlugin {
             getLogger().info("GSit detected! Enabling auto-join on sit.");
             getServer().getPluginManager().registerEvents(new GSitListener(), this);
         }
-        getLogger().info("PokerUltimateTexasHoldem enabled! Gamba time!");
+        getLogger().info("PokerTexasHoldem enabled! Gamba time!");
     }
 
     @Override
     public void onDisable() {
         me.choconutzy.letsGamba.pokerLogic.PokerManager.shutdownAll();
-        getLogger().info("PokerUltimateTexasHoldem disabled!");
+        getLogger().info("PokerTexasHoldem disabled!");
     }
     public static LetsGambaPlugin getInstance() {
     return instance;
