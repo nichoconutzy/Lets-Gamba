@@ -41,6 +41,7 @@ public class PokerManager {
 
             tables.put(nextTableId, newTable);
             player.sendMessage(ChatColor.GREEN + "Table #" + nextTableId + " initialized!");
+            newTable.join(player);
             nextTableId++;
         }
     }
