@@ -268,7 +268,7 @@ public class PokerTable {
     }
 
     private boolean setupDealerAndTable(Player player) {
-        return false;
+        return nitwitDealer.setupDealerAndTable(player);
     }
 
     public void join(Player player) {
