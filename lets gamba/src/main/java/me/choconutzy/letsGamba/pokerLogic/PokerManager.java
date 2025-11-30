@@ -27,12 +27,12 @@ public class PokerManager {
         PokerTable newTable = new PokerTable(nextTableId);
 
         // Attempt setup (finding wool/villager)
-        boolean success = newTable.setupDealerAndTable(player);
+        boolean success = newTable.nitwitDealer.setupDealerAndTable(player);
 
         if (success) {
             // Check for physical overlap with existing tables
             for (PokerTable t : tables.values()) {
-                if (t.isLocationOverlapping(newTable.getCenter())) {
+                if (t.nitwitDealer.isLocationOverlapping(newTable.nitwitDealer.getCenter())) {
                     player.sendMessage(ChatColor.RED + "This table is too close to an existing poker table.");
                     newTable.forceCleanup();
                     return;
@@ -149,9 +149,9 @@ public class PokerManager {
         double minDist = Double.MAX_VALUE;
 
         for (PokerTable table : tables.values()) {
-            if (table.getCenter() == null || !table.getCenter().getWorld().equals(loc.getWorld())) continue;
+            if (table.nitwitDealer.getCenter() == null || !table.nitwitDealer.getCenter().getWorld().equals(loc.getWorld())) continue;
 
-            double dist = table.getCenter().distance(loc);
+            double dist = table.nitwitDealer.getCenter().distance(loc);
             if (dist < 20.0 && dist < minDist) { // 20 blocks search radius
                 minDist = dist;
                 nearest = table;

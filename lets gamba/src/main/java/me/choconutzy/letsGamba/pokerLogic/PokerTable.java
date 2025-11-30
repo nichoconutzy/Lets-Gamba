@@ -4,6 +4,7 @@ import me.choconutzy.letsGamba.Commands.gambaCommand;
 import me.choconutzy.letsGamba.Economy.EconomyProvider;
 import me.choconutzy.letsGamba.LetsGambaPlugin;
 import me.choconutzy.letsGamba.handLogic.*;
+import me.choconutzy.letsGamba.pokerLogic.nitwitDealer;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -47,7 +48,8 @@ public class PokerTable {
     public boolean hasPlayer(UUID uuid) {
         return players.containsKey(uuid);
     }
-
+    // Nitwit Initialization
+    final nitwitDealer nitwitDealer;
     // Economy Integration
     private BigDecimal pot = BigDecimal.ZERO;
     private BigDecimal currentBet = BigDecimal.ZERO;      // highest bet this street
@@ -140,6 +142,7 @@ public class PokerTable {
 
     public PokerTable(int tableId) {
         this.tableId = tableId;
+        this.nitwitDealer = new nitwitDealer(this);
     }
 
     public int getTableId() {
@@ -213,11 +216,7 @@ public class PokerTable {
     }
 
     // ---------- JOIN / LEAVE & RADIUS ----------
-    public void hostTable(Player player) { // HOSTING TABLE
-        // Optional debug logging (uncomment for troubleshooting)
-        // System.out.println("[POKER DEBUG] " + player.getName() + " called hostTable - center: " + center + ", isSetup: " + isSetupInProgress + ", waiting: " + waitingForHost);
-
-        // === EMERGENCY STATE RECOVERY ===
+    public void hostTable(Player player) {
         // Detect and fix corrupted state where flags are true but dealer entity is invalid
         if (isSetupInProgress && (dealerId == null || Bukkit.getEntity(dealerId) == null)) {
             player.sendMessage(ChatColor.YELLOW + "Detected stale setup state (dealer lost). Resetting...");
@@ -266,6 +265,10 @@ public class PokerTable {
                 waitingForHost = false;
             }
         }
+    }
+
+    private boolean setupDealerAndTable(Player player) {
+        return false;
     }
 
     public void join(Player player) {
@@ -373,7 +376,7 @@ public class PokerTable {
 
         if (players.isEmpty()) {
             // NEW: Release dealer logic
-            releaseDealer();
+            nitwitDealer.releaseDealer();
             center = null;
         }
         if (players.size() < 2) {
@@ -400,7 +403,7 @@ public class PokerTable {
 
     // NEW: Helper method to clean up without logic checks
     public void forceCleanup() {
-        releaseDealer();
+        nitwitDealer.releaseDealer();
         if (proximityTask != null) proximityTask.cancel();
         if (restartTask != null) restartTask.cancel();
         tableBlocks.clear();
@@ -1158,293 +1161,7 @@ public class PokerTable {
     }
 
     // ---------- DEALER / NITWIT LOGIC ----------
-    boolean setupDealerAndTable(Player player) {
-        isSetupInProgress = true;
-
-        // 1. Find Green Wool nearby
-        List<Block> woolBlocks = findNearbyGreenWool(player.getLocation());
-        if (woolBlocks.size() < WOOL_REQUIRED) {
-            player.sendMessage(ChatColor.RED + "Not enough Green Wool nearby!");
-            player.sendMessage(ChatColor.GRAY + "You need a 3x2 Green Wool table.");
-            isSetupInProgress = false;
-            return false;
-        }
-        this.tableBlocks.clear();
-        this.tableBlocks.addAll(woolBlocks);
-
-        Location tableCenter = getCentroid(woolBlocks);
-
-        // 2. Find Nitwit (Green Villager)
-        Villager nitwit = findNearbyNitwit(player.getLocation());
-        if (nitwit == null) {
-            player.sendMessage(ChatColor.RED + "No Nitwit found nearby.");
-            isSetupInProgress = false;
-            return false;
-        }
-
-        // 3. Calculate Dealer Destination
-        // (Logic copied from previous file to ensure we get the target location BEFORE moving him)
-        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
-        int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
-
-        for (Block b : woolBlocks) {
-            minX = Math.min(minX, b.getX());
-            maxX = Math.max(maxX, b.getX());
-            minZ = Math.min(minZ, b.getZ());
-            maxZ = Math.max(maxZ, b.getZ());
-        }
-
-        double midX = (minX + maxX) / 2.0 + 0.5;
-        double midZ = (minZ + maxZ) / 2.0 + 0.5;
-        double dealerY = tableCenter.getY() - 1.0;
-
-        Location c1, c2;
-        int xLen = maxX - minX;
-        int zLen = maxZ - minZ;
-
-        if (xLen > zLen) {
-            c1 = new Location(tableCenter.getWorld(), midX, dealerY, minZ - 0.5);
-            c2 = new Location(tableCenter.getWorld(), midX, dealerY, maxZ + 1.5);
-        } else {
-            c1 = new Location(tableCenter.getWorld(), minX - 0.5, dealerY, midZ);
-            c2 = new Location(tableCenter.getWorld(), maxX + 1.5, dealerY, midZ);
-        }
-
-        boolean c1HasStairs = hasNeighboringStairs(c1, tableCenter);
-        boolean c2HasStairs = hasNeighboringStairs(c2, tableCenter);
-
-        Location targetLoc;
-        // FIXED: Prioritize the side WITHOUT stairs
-        if (c1HasStairs && !c2HasStairs) {
-            targetLoc = c2; // c2 is clear, use it
-        } else if (!c1HasStairs && c2HasStairs) {
-            targetLoc = c1; // c1 is clear, use it
-        } else if (!c1HasStairs && !c2HasStairs) {
-            // Both sides are clear, choose closer one
-            targetLoc = (player.getLocation().distanceSquared(c1) < player.getLocation().distanceSquared(c2)) ? c1 : c2;
-        } else {
-            // Both have stairs (worst case), choose closer one and warn
-            targetLoc = (player.getLocation().distanceSquared(c1) < player.getLocation().distanceSquared(c2)) ? c1 : c2;
-            player.sendMessage(ChatColor.YELLOW + "Warning: Both dealer positions have stairs nearby!");
-        }
-
-        // 4. Initialize Game Data
-        this.dealerId = nitwit.getUniqueId();
-        this.center = tableCenter;
-
-        // 5. BUG FIX: Check if Dealer is ALREADY there
-        if (nitwit.getLocation().distance(targetLoc) < 1.5) {
-            player.sendMessage(ChatColor.GREEN + "Dealer is already at the table.");
-
-            // Ensure he is snapped to grid and frozen
-            targetLoc.setDirection(tableCenter.toVector().subtract(targetLoc.toVector()));
-            targetLoc.setPitch(0);
-            nitwit.teleport(targetLoc);
-            nitwit.setAI(false);
-            nitwit.setInvulnerable(true);
-            nitwit.setGravity(true);
-
-            // Skip walking, go straight to waiting
-            isSetupInProgress = false;
-            startProximityCheck(player);
-            return true;
-        }
-
-        // 6. Start Dealer Movement Routine
-        startDealerWalkingRoutine(player, nitwit, targetLoc, tableCenter);
-        return true;
-    }
-
-    // Update this method to set isSetupInProgress = false when done or cancelled
-    private void startDealerWalkingRoutine(Player player, Villager dealer, Location targetPos, Location lookAtTarget) {
-        player.sendMessage(ChatColor.GREEN + "The Nitwit is walking to the dealer's seat...");
-        dealer.setAI(true);
-        dealer.setTarget(null);
-        if (dealer instanceof Mob) ((Mob) dealer).getPathfinder().moveTo(targetPos);
-
-        new BukkitRunnable() {
-            int ticks = 0;
-            final int MAX_WAIT_TICKS = 100;
-
-            @Override
-            public void run() {
-                if (dealerId == null || !dealer.isValid()) {
-                    isSetupInProgress = false;
-                    this.cancel();
-                    return;
-                }
-
-                double dist = dealer.getLocation().distance(targetPos);
-
-                if (dist < 1.2 || ticks >= MAX_WAIT_TICKS) {
-                    Location finalLoc = targetPos.clone();
-                    Vector dir = lookAtTarget.clone().toVector().subtract(finalLoc.toVector());
-                    finalLoc.setDirection(dir);
-                    finalLoc.setPitch(0);
-
-                    dealer.teleport(finalLoc);
-                    dealer.setAI(false);
-                    dealer.setInvulnerable(true);
-                    dealer.setGravity(true);
-
-                    isSetupInProgress = false;
-                    startProximityCheck(player);
-                    this.cancel();
-                    return;
-                }
-
-                if (ticks % 20 == 0 && ticks < MAX_WAIT_TICKS) {
-                    if (dealer instanceof Mob) ((Mob) dealer).getPathfinder().moveTo(targetPos);
-                }
-                ticks += 5;
-            }
-        }.runTaskTimer(LetsGambaPlugin.getInstance(), 0L, 5L);
-    }
-
-    private boolean hasNeighboringStairs(Location dealerLoc, Location faceTarget) {
-        // Calculate the vector pointing from Dealer to Table Center
-        Vector direction = faceTarget.toVector().subtract(dealerLoc.toVector()).setY(0).normalize();
-
-        // Calculate Right Vector (Cross product with Up)
-        Vector right = direction.clone().crossProduct(new Vector(0, 1, 0)).normalize();
-
-        // Calculate Left Vector (Reverse of Right)
-        Vector left = right.clone().multiply(-1);
-
-        // Get blocks to left and right
-        Block rightBlock = dealerLoc.clone().add(right).getBlock();
-        Block leftBlock = dealerLoc.clone().add(left).getBlock();
-
-        return isStair(rightBlock) || isStair(leftBlock);
-    }
-
-    private boolean isStair(Block b) {
-        return b != null && b.getType().name().endsWith("_STAIRS");
-    }
-
-    private void startProximityCheck(Player initiator) {
-        waitingForHost = true;
-        initiator.sendMessage(ChatColor.GREEN + "The Dealer has arrived! Walk to the table to open it.");
-
-        // Task runs every 1 second (20 ticks)
-        proximityTask = new BukkitRunnable() {
-            int secondsWaited = 0;
-            final int TIMEOUT = 45;
-
-            @Override
-            public void run() {
-                // Safety check
-                if (dealerId == null || center == null) {
-                    this.cancel();
-                    waitingForHost = false;
-                    return;
-                }
-
-                // Check if initiator (or any player) is close enough
-                boolean playerClose = false;
-                if (initiator.isOnline() && initiator.getWorld().equals(center.getWorld())) {
-                    if (initiator.getLocation().distance(center) <= ACTIVATION_DISTANCE) {
-                        playerClose = true;
-                    }
-                }
-
-                if (playerClose) {
-                    waitingForHost = false;
-
-                    Bukkit.broadcastMessage(ChatColor.GREEN + "[Poker] A table is open at "
-                            + ChatColor.YELLOW + center.getBlockX() + ", " + center.getBlockY() + ", " + center.getBlockZ()
-                            + ChatColor.GREEN + "! Use " + ChatColor.GOLD + "/poker join" + ChatColor.GREEN + " to join the table.");
-
-                    // Manually trigger join for the initiator now that they are close
-                    join(initiator);
-
-                    this.cancel();
-                    return;
-                }
-
-                secondsWaited++;
-
-                // Timeout logic
-                if (secondsWaited >= TIMEOUT) {
-                    if (initiator.isOnline()) {
-                        initiator.sendMessage(ChatColor.RED + "Poker request timed out. You didn't approach the table.");
-                    }
-                    releaseDealer(); // Reset everything
-                    center = null;
-                    waitingForHost = false;
-                    this.cancel();
-                }
-            }
-        }.runTaskTimer(LetsGambaPlugin.getInstance(), 0L, 20L);
-    }
-
-    private void releaseDealer() {
-        if (proximityTask != null && !proximityTask.isCancelled()) {
-            proximityTask.cancel();
-        }
-        waitingForHost = false;
-
-        if (dealerId == null) return;
-
-        Entity e = Bukkit.getEntity(dealerId);
-        if (e instanceof Villager) {
-            Villager v = (Villager) e;
-            // Restore normal behavior
-            v.setAI(true);
-            v.setInvulnerable(false);
-        }
-        dealerId = null;
-    }
-
-    private List<Block> findNearbyGreenWool(Location center) {
-        List<Block> blocks = new ArrayList<>();
-        int radius = 5;
-        for (int x = -radius; x <= radius; x++) {
-            for (int y = -2; y <= 3; y++) {
-                for (int z = -radius; z <= radius; z++) {
-                    Block b = center.getBlock().getRelative(x, y, z);
-                    if (b.getType() == Material.GREEN_WOOL) {
-                        blocks.add(b);
-                    }
-                }
-            }
-        }
-        return blocks;
-    }
-
-    private Villager findNearbyNitwit(Location loc) {
-        for (Entity e : loc.getWorld().getNearbyEntities(loc, FIND_RADIUS, FIND_RADIUS, FIND_RADIUS)) {
-            if (e instanceof Villager) {
-                Villager v = (Villager) e;
-                if (v.getProfession() == Profession.NITWIT && v.isValid()) {
-                    return v;
-                }
-            }
-        }
-        return null;
-    }
-
-    private Location getCentroid(List<Block> blocks) {
-        if (blocks.isEmpty()) return null;
-        double totalX = 0, totalY = 0, totalZ = 0;
-        for (Block b : blocks) {
-            totalX += b.getX() + 0.5;
-            totalY += b.getY() + 0.5;
-            totalZ += b.getZ() + 0.5;
-        }
-        return new Location(blocks.get(0).getWorld(), totalX / blocks.size(), totalY / blocks.size(), totalZ / blocks.size());
-    }
-
-    public Location getCenter() {
-        return center;
-    }
-
-    public boolean isLocationOverlapping(Location otherCenter) {
-        if (this.center == null || otherCenter == null) return false;
-        if (!this.center.getWorld().equals(otherCenter.getWorld())) return false;
-        return this.center.distance(otherCenter) < 6.0;
-    }
-
+    // MOVED TO nitwitDealer.java
     // ---------- AFK CHECKER ----------
 
     public void startAfkChecker() {
