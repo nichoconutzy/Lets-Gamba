@@ -562,11 +562,21 @@ public class PokerTable {
                 BigDecimal toPay    = newBet.subtract(playerBet);
 
                 if (!chargePlayer(tp, toPay)) {
-                    player.sendMessage(ChatColor.RED + "You cannot afford the minimum raise. Treated as fold.");
-                    tp.setFolded(true);
-                    tp.setActedThisStreet(true);
-                    nextTurnOrStage();
-                } else {
+                    // Just warn, do NOT fold, do NOT advance turn
+                    player.sendMessage(ChatColor.RED + "You cannot afford that raise.");
+
+                    // Re-show the action buttons so they can choose fold / call / all-in, etc.
+                    gambaCommand cmd = (gambaCommand) LetsGambaPlugin
+                            .getInstance()
+                            .getCommand("poker")
+                            .getExecutor();
+
+                    if (cmd != null) {
+                        cmd.sendActionMenu(player);
+                    }
+
+                    return; // still this player's turn
+                }{
                     currentBet = newBet;
                     lastRaiseSize = minRaise;
                     tp.setActedThisStreet(true);
@@ -711,7 +721,11 @@ public class PokerTable {
             } else {
                 broadcast(ChatColor.RED + "No active players remain.");
             }
-            endHand();
+            Bukkit.getScheduler().runTaskLater(
+                    LetsGambaPlugin.getInstance(),
+                    this::endHand,
+                    100L // 100 ticks ≈ 5 seconds (adjust if you like)
+            );
             return;
         }
 
@@ -783,7 +797,7 @@ public class PokerTable {
                 // ⏱ wait 4 seconds before ending the hand
                 Bukkit.getScheduler().runTaskLater(LetsGambaPlugin.getInstance(), () -> {
                     endHand();
-                }, 80L); // 20 ticks = 1 second → 80 ticks = 4 seconds
+                }, 100L); // 20 ticks = 1 second → 80 ticks = 4 seconds
                 return;
             }
             default -> {}
