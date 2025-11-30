@@ -64,7 +64,7 @@ public class nitwitDealer {
             return false;
         }
 
-        // 3. Calculate Dealer Destination
+        // 3. Calculate dealer positions on the 3-block sides only
         int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
         int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
 
@@ -77,75 +77,48 @@ public class nitwitDealer {
 
         double midX = (minX + maxX) / 2.0 + 0.5;
         double midZ = (minZ + maxZ) / 2.0 + 0.5;
+        double tableY = tableCenter.getY();
+        World world = tableCenter.getWorld();
 
-        // Determine table orientation and calculate potential dealer positions
-        Location c1, c2;
-        int xLen = maxX - minX;
-        int zLen = maxZ - minZ;
+        // Determine table orientation and create candidates for 3-block sides only
+        List<Location> candidatePositions = new ArrayList<>();
 
-        if (xLen > zLen) {
-            // Table is oriented along X-axis, dealer on Z sides
-            c1 = new Location(tableCenter.getWorld(), midX, tableCenter.getY(), minZ - 0.5);
-            c2 = new Location(tableCenter.getWorld(), midX, tableCenter.getY(), maxZ + 1.5);
+        int xLength = maxX - minX + 1; // Number of blocks along X
+        int zLength = maxZ - minZ + 1; // Number of blocks along Z
+
+        if (xLength == 3 && zLength == 2) {
+            // Table is 3 blocks along X-axis, 2 blocks along Z-axis
+            // Dealer can only stand on the Z sides (North/South - the 3-block sides)
+            candidatePositions.add(new Location(world, midX, tableY, minZ - 0.5)); // North side
+            candidatePositions.add(new Location(world, midX, tableY, maxZ + 1.5)); // South side
+        } else if (xLength == 2 && zLength == 3) {
+            // Table is 2 blocks along X-axis, 3 blocks along Z-axis
+            // Dealer can only stand on the X sides (West/East - the 3-block sides)
+            candidatePositions.add(new Location(world, minX - 0.5, tableY, midZ)); // West side
+            candidatePositions.add(new Location(world, maxX + 1.5, tableY, midZ)); // East side
         } else {
-            // Table is oriented along Z-axis, dealer on X sides
-            c1 = new Location(tableCenter.getWorld(), minX - 0.5, tableCenter.getY(), midZ);
-            c2 = new Location(tableCenter.getWorld(), maxX + 1.5, tableCenter.getY(), midZ);
-        }
-
-        // Find solid ground for both positions
-        Location c1Ground = findSafeGroundPosition(c1);
-        Location c2Ground = findSafeGroundPosition(c2);
-
-        // Check if we found valid ground for both positions
-        if (c1Ground == null && c2Ground == null) {
-            player.sendMessage(ChatColor.RED + "Cannot set up dealer - no valid ground found near the table!");
-            player.sendMessage(ChatColor.GRAY + "Make sure there's solid ground next to the table.");
+            // Invalid table shape
+            player.sendMessage(ChatColor.RED + "Invalid table shape!");
+            player.sendMessage(ChatColor.GRAY + "The table must be exactly 3x2 Green Wool blocks.");
             isSetupInProgress = false;
             return false;
         }
 
-        // Check for stairs (using ground-adjusted positions)
-        boolean c1HasStairs = c1Ground != null && hasNeighboringStairs(c1Ground, tableCenter);
-        boolean c2HasStairs = c2Ground != null && hasNeighboringStairs(c2Ground, tableCenter);
+        // 4. Evaluate positions and find the best one
+        Location targetLoc = findBestDealerPosition(candidatePositions, tableCenter);
 
-        Location targetLoc = null;
-
-        // Selection logic: prioritize no stairs, then valid ground, then closest
-        if (c1Ground != null && !c1HasStairs && c2Ground != null && !c2HasStairs) {
-            // Both valid and no stairs - choose closest to player
-            targetLoc = (player.getLocation().distanceSquared(c1Ground) < player.getLocation().distanceSquared(c2Ground))
-                    ? c1Ground : c2Ground;
-        } else if (c1Ground != null && !c1HasStairs) {
-            // Only c1 is valid and has no stairs
-            targetLoc = c1Ground;
-        } else if (c2Ground != null && !c2HasStairs) {
-            // Only c2 is valid and has no stairs
-            targetLoc = c2Ground;
-        } else if (c1Ground != null && c2Ground != null) {
-            // Both have stairs - FAIL
-            player.sendMessage(ChatColor.RED + "Cannot set up dealer - both sides of the table have stairs!");
-            player.sendMessage(ChatColor.GRAY + "Remove stairs from at least one side of the table.");
-            isSetupInProgress = false;
-            return false;
-        } else {
-            // Only one has valid ground (must have stairs, but it's our only option)
-            targetLoc = (c1Ground != null) ? c1Ground : c2Ground;
-            player.sendMessage(ChatColor.YELLOW + "Warning: Dealer position has stairs nearby (only valid position found).");
-        }
-
-        // Validate final position before proceeding
-        if (!isPositionSafe(targetLoc)) {
-            player.sendMessage(ChatColor.RED + "Cannot set up dealer - the position is not safe!");
+        if (targetLoc == null) {
+            player.sendMessage(ChatColor.RED + "Cannot set up dealer - no valid ground found on either side of the table!");
+            player.sendMessage(ChatColor.GRAY + "Make sure there's solid ground next to the 3-block sides and no stairs blocking.");
             isSetupInProgress = false;
             return false;
         }
 
-        // 4. Initialize Game Data
+        // 5. Initialize Game Data
         this.dealerId = nitwit.getUniqueId();
         this.center = tableCenter;
 
-        // 5. Check if Dealer is ALREADY there
+        // 6. Check if Dealer is ALREADY there
         if (nitwit.getLocation().distance(targetLoc) < 1.5) {
             player.sendMessage(ChatColor.GREEN + "Dealer is already at the table.");
 
@@ -161,9 +134,124 @@ public class nitwitDealer {
             return true;
         }
 
-        // 6. Start Dealer Movement Routine
+        // 7. Start Dealer Movement Routine
         startDealerWalkingRoutine(player, nitwit, targetLoc, tableCenter);
         return true;
+    }
+
+    /**
+     * Evaluates all candidate positions and returns the best one.
+     * Evaluation is based solely on the table surroundings.
+     * Priority: 1) Valid ground, 2) No stairs, 3) Most open space around position
+     *
+     * @param candidates    List of potential positions around the table (3-block sides only)
+     * @param tableCenter   The center of the table (for facing direction)
+     * @return The best valid location, or null if none found
+     */
+    private Location findBestDealerPosition(List<Location> candidates, Location tableCenter) {
+        List<DealerPositionCandidate> validCandidates = new ArrayList<>();
+
+        for (Location candidate : candidates) {
+            Location groundPos = findSafeGroundPosition(candidate);
+
+            if (groundPos == null) {
+                continue;
+            }
+
+            if (!isPositionSafe(groundPos)) {
+                continue;
+            }
+
+            boolean hasStairs = hasNeighboringStairs(groundPos, tableCenter);
+            int openScore = calculateOpenSpaceScore(groundPos);
+
+            validCandidates.add(new DealerPositionCandidate(groundPos, hasStairs, openScore));
+        }
+
+        if (validCandidates.isEmpty()) {
+            return null;
+        }
+
+        // Sort candidates: no stairs first, then by open space score (higher is better)
+        validCandidates.sort((a, b) -> {
+            // First priority: positions without stairs
+            if (a.hasStairs != b.hasStairs) {
+                return a.hasStairs ? 1 : -1;
+            }
+            // Second priority: more open space (higher score is better)
+            return Integer.compare(b.openScore, a.openScore);
+        });
+
+        return validCandidates.get(0).location;
+    }
+
+    /**
+     * Calculates an "openness" score for a position based on surrounding blocks.
+     * Higher score means more open/accessible space around the position.
+     *
+     * @param loc The location to evaluate
+     * @return An integer score representing how open the area is
+     */
+    private int calculateOpenSpaceScore(Location loc) {
+        int score = 0;
+        Block centerBlock = loc.getBlock();
+
+        // Check the immediate ring around the position (8 blocks horizontally)
+        for (int x = -1; x <= 1; x++) {
+            for (int z = -1; z <= 1; z++) {
+                if (x == 0 && z == 0) {
+                    continue;
+                }
+
+                Block groundLevel = centerBlock.getRelative(x, -1, z);
+                Block feetLevel = centerBlock.getRelative(x, 0, z);
+                Block headLevel = centerBlock.getRelative(x, 1, z);
+
+                // Award points for solid ground
+                if (groundLevel.getType().isSolid() && !isDangerousBlock(groundLevel)) {
+                    score += 2;
+                }
+
+                // Award points for passable space at feet and head level
+                if (isPassable(feetLevel)) {
+                    score += 1;
+                }
+                if (isPassable(headLevel)) {
+                    score += 1;
+                }
+
+                // Penalize obstructions
+                if (feetLevel.getType().isSolid()) {
+                    score -= 2;
+                }
+                if (headLevel.getType().isSolid()) {
+                    score -= 2;
+                }
+            }
+        }
+
+        // Bonus for the position itself being well-grounded
+        Block directGround = centerBlock.getRelative(0, -1, 0);
+        if (directGround.getType().isSolid() && !isDangerousBlock(directGround)) {
+            score += 3;
+        }
+
+        return score;
+    }
+
+    /**
+     * Helper class to store candidate position data for comparison.
+     */
+    private static class DealerPositionCandidate {
+        final Location location;
+        final boolean hasStairs;
+        final int openScore;
+
+        DealerPositionCandidate(Location location, boolean hasStairs, int openScore) {
+            this.location = location;
+            this.hasStairs = hasStairs;
+            this.openScore = openScore;
+        }
     }
 
     private void startDealerWalkingRoutine(Player player, Villager dealer, Location targetPos, Location lookAtTarget) {
@@ -506,6 +594,6 @@ public class nitwitDealer {
     public boolean isLocationOverlapping(Location otherCenter) {
         if (this.center == null || otherCenter == null) return false;
         if (!this.center.getWorld().equals(otherCenter.getWorld())) return false;
-        return this.center.distance(otherCenter) < 6.0;
+        return this.center.distance(otherCenter) < 2.0;
     }
 }
