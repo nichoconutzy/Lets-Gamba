@@ -1196,13 +1196,23 @@ public class PokerTable {
             c2 = new Location(tableCenter.getWorld(), maxX + 1.5, dealerY, midZ);
         }
 
-        boolean c1Bad = hasNeighboringStairs(c1, tableCenter);
-        boolean c2Bad = hasNeighboringStairs(c2, tableCenter);
+        boolean c1HasStairs = hasNeighboringStairs(c1, tableCenter);
+        boolean c2HasStairs = hasNeighboringStairs(c2, tableCenter);
 
         Location targetLoc;
-        if (c1Bad && !c2Bad) targetLoc = c2;
-        else if (!c1Bad && c2Bad) targetLoc = c1;
-        else targetLoc = (player.getLocation().distanceSquared(c1) < player.getLocation().distanceSquared(c2)) ? c1 : c2;
+        // FIXED: Prioritize the side WITHOUT stairs
+        if (c1HasStairs && !c2HasStairs) {
+            targetLoc = c2; // c2 is clear, use it
+        } else if (!c1HasStairs && c2HasStairs) {
+            targetLoc = c1; // c1 is clear, use it
+        } else if (!c1HasStairs && !c2HasStairs) {
+            // Both sides are clear, choose closer one
+            targetLoc = (player.getLocation().distanceSquared(c1) < player.getLocation().distanceSquared(c2)) ? c1 : c2;
+        } else {
+            // Both have stairs (worst case), choose closer one and warn
+            targetLoc = (player.getLocation().distanceSquared(c1) < player.getLocation().distanceSquared(c2)) ? c1 : c2;
+            player.sendMessage(ChatColor.YELLOW + "Warning: Both dealer positions have stairs nearby!");
+        }
 
         // 4. Initialize Game Data
         this.dealerId = nitwit.getUniqueId();
@@ -1245,7 +1255,7 @@ public class PokerTable {
             @Override
             public void run() {
                 if (dealerId == null || !dealer.isValid()) {
-                    isSetupInProgress = false; // Reset flag
+                    isSetupInProgress = false;
                     this.cancel();
                     return;
                 }
@@ -1263,7 +1273,7 @@ public class PokerTable {
                     dealer.setInvulnerable(true);
                     dealer.setGravity(true);
 
-                    isSetupInProgress = false; // Walking done
+                    isSetupInProgress = false;
                     startProximityCheck(player);
                     this.cancel();
                     return;
