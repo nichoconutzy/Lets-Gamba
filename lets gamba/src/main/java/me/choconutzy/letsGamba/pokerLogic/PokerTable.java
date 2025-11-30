@@ -1182,7 +1182,7 @@ public class PokerTable {
 
         double midX = (minX + maxX) / 2.0 + 0.5;
         double midZ = (minZ + maxZ) / 2.0 + 0.5;
-        double dealerY = Math.floor(player.getLocation().getY());
+        double dealerY = tableCenter.getY() - 1.0;
 
         Location c1, c2;
         int xLen = maxX - minX;
