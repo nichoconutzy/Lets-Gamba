@@ -21,6 +21,10 @@ public class PokerGame {
 
     private GameStage stage = GameStage.PRE_FLOP;
 
+    private void sendSeparator() {
+        player.sendMessage(ChatColor.GRAY + "----------------------------------------");
+    }
+
     public PokerGame(Player player) {
         this.player = player;
         this.deck = new Deck();
@@ -83,6 +87,7 @@ public class PokerGame {
 
                 // show clickable buttons again
                 sendChatButtons(player);
+                sendSeparator();
             }
 
             case FLOP -> {
@@ -94,6 +99,7 @@ public class PokerGame {
 
                 // show clickable buttons again
                 sendChatButtons(player);
+                sendSeparator();
             }
             case TURN -> {
                 // deal river 1 card
@@ -102,6 +108,7 @@ public class PokerGame {
                 player.sendMessage(ChatColor.GREEN + "River:");
                 sendBoard();
                 sendChatButtons(player);
+                sendSeparator();
             }
 
             case RIVER -> {
@@ -109,6 +116,7 @@ public class PokerGame {
                 stage = GameStage.SHOWDOWN;
                 showDown();
                 stage = GameStage.FINISHED;
+                
             }
 
             default -> {

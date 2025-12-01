@@ -49,7 +49,7 @@ public class PokerTable {
         return players.containsKey(uuid);
     }
     // Nitwit Initialization
-    final nitwitDealer nitwitDealer;
+    public final nitwitDealer nitwitDealer;
     // Economy Integration
     private BigDecimal pot = BigDecimal.ZERO;
     private BigDecimal currentBet = BigDecimal.ZERO;      // highest bet this street
@@ -219,15 +219,15 @@ public class PokerTable {
 
 // ---------- BOUNDING BOX DETECTION 5x4(3x2) ----------
     public boolean isInsideTableArea(Player p) {
-        if (nitwitDealer.getTableBlocks().isEmpty()) return false;
-        if (p.getWorld() != nitwitDealer.getTableBlocks().get(0).getWorld()) return false;
+        if (this.tableBlocks.isEmpty()) return false;
+        if (p.getWorld() != this.tableBlocks.get(0).getWorld()) return false;
 
         // Calculate bounds dynamically based on current wool blocks
         int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
         int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
-        int tableY = nitwitDealer.getTableBlocks().get(0).getY();
+        int tableY = this.tableBlocks.get(0).getY();
 
-        for (Block b : nitwitDealer.getTableBlocks()) {
+        for (Block b : this.tableBlocks) {
             minX = Math.min(minX, b.getX());
             maxX = Math.max(maxX, b.getX());
             minZ = Math.min(minZ, b.getZ());
@@ -1213,6 +1213,7 @@ public class PokerTable {
             sb.append(ChatColor.GOLD)
                     .append("[")
                     .append(cardText(c))
+                    .append(ChatColor.GOLD) // the buh fix
                     .append("] ");
         }
         broadcast(sb.toString());

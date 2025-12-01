@@ -12,6 +12,14 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
+// Tipping Mechanic
+import java.math.BigDecimal;
+import java.util.Arrays;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import me.choconutzy.letsGamba.Economy.EconomyProvider;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -571,6 +579,76 @@ public class nitwitDealer {
                 type == Material.WITHER_ROSE ||
                 type.name().contains("PRESSURE_PLATE") ||
                 type.name().contains("TRIPWIRE");
+    }
+
+    // ---------- TIPPING LOGIC ----------
+
+    public void openTippingMenu(Player player) {
+        Inventory inv = Bukkit.createInventory(null, 9, ChatColor.GREEN + "Tip the Dealer?");
+
+        inv.setItem(2, createGuiItem(Material.IRON_NUGGET, ChatColor.YELLOW + "$10", "Click to tip 10"));
+        inv.setItem(3, createGuiItem(Material.GOLD_NUGGET, ChatColor.GOLD + "$20", "Click to tip 20"));
+        inv.setItem(4, createGuiItem(Material.EMERALD, ChatColor.GREEN + "$30", "Click to tip 30"));
+        inv.setItem(6, createGuiItem(Material.NAME_TAG, ChatColor.LIGHT_PURPLE + "Custom Amount", "Click to type in chat"));
+
+        player.openInventory(inv);
+    }
+
+    private ItemStack createGuiItem(Material material, String name, String... lore) {
+        ItemStack item = new ItemStack(material, 1);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(name);
+            meta.setLore(Arrays.asList(lore));
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    public void processTip(Player player, double amount) {
+        if (amount <= 0) return;
+
+        EconomyProvider eco = LetsGambaPlugin.getInstance().getEconomyProvider();
+        if (eco == null || !eco.isEnabled()) {
+            player.sendMessage(ChatColor.RED + "Economy is disabled.");
+            return;
+        }
+
+        BigDecimal tipAmount = BigDecimal.valueOf(amount);
+
+        if (!eco.hasEnough(player.getUniqueId(), tipAmount)) {
+            player.sendMessage(ChatColor.RED + "You don't have enough money to tip $" + amount + "!");
+            return;
+        }
+
+        eco.subtract(player.getUniqueId(), tipAmount);
+
+        // Confirmation message
+        player.sendMessage(ChatColor.GREEN + "You tipped the dealer " + ChatColor.GOLD + "$" + amount + ChatColor.GREEN + "!");
+
+        // Physical Reaction
+        playDealerReaction();
+    }
+
+    private void playDealerReaction() {
+        if (dealerId == null) return;
+        Entity e = Bukkit.getEntity(dealerId);
+
+        if (e instanceof Villager v) {
+            Location loc = v.getLocation();
+
+            // Particles: Happy Green/Hearts
+            v.getWorld().spawnParticle(Particle.HEART, loc.add(0, 0.5, 0), 2, 0.3, 0.3, 0.3);
+
+            // Sound: Happy Villager + XP pickup sound
+            v.getWorld().playSound(loc, Sound.ENTITY_VILLAGER_YES, 1.0f, 1.0f);
+            v.getWorld().playSound(loc, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.5f);
+
+            // Movement: Small jump of joy
+            v.setVelocity(new Vector(0, 0.3, 0));
+
+            // Look at the player who tipped? (Optional, requires passing player loc)
+        }
     }
 
     // ---------- GETTERS ----------

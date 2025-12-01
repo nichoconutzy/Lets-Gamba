@@ -32,7 +32,7 @@ public class gambaCommand implements CommandExecutor {
 
         String sub = args[0].toLowerCase();
 
-        // /poker override
+        // /poker override - use this for debugging UI. Note that this is global and needs to be turned off once finished.
         if (sub.equals("override") || sub.equals("ov") || sub.equals("singleplayer")) {
             if (!player.isOp()) {
                 player.sendMessage(ChatColor.RED + "Only operators can use singleplayer override mode.");

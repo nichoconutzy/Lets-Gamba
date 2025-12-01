@@ -165,7 +165,7 @@ public class PokerManager {
         return null;
     }
 
-    private static PokerTable findNearestTable(Location loc) {
+    public static PokerTable findNearestTable(Location loc) {
         PokerTable nearest = null;
         double minDist = Double.MAX_VALUE;
 
