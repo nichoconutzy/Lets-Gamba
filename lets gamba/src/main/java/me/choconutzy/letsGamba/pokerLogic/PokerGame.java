@@ -21,10 +21,6 @@ public class PokerGame {
 
     private GameStage stage = GameStage.PRE_FLOP;
 
-    private void sendSeparator() {
-        player.sendMessage(ChatColor.GRAY + "----------------------------------------");
-    }
-
     public PokerGame(Player player) {
         this.player = player;
         this.deck = new Deck();
@@ -84,10 +80,10 @@ public class PokerGame {
 
                 player.sendMessage(ChatColor.GREEN + "Flop:");
                 sendBoard();
-
+                sendSeparator();
                 // show clickable buttons again
                 sendChatButtons(player);
-                sendSeparator();
+
             }
 
             case FLOP -> {
@@ -97,9 +93,8 @@ public class PokerGame {
                 player.sendMessage(ChatColor.GREEN + "Turn:");
                 sendBoard();
 
-                // show clickable buttons again
-                sendChatButtons(player);
                 sendSeparator();
+                sendChatButtons(player);
             }
             case TURN -> {
                 // deal river 1 card
@@ -107,8 +102,9 @@ public class PokerGame {
                 stage = GameStage.RIVER;
                 player.sendMessage(ChatColor.GREEN + "River:");
                 sendBoard();
-                sendChatButtons(player);
+
                 sendSeparator();
+                sendChatButtons(player);
             }
 
             case RIVER -> {
@@ -116,7 +112,7 @@ public class PokerGame {
                 stage = GameStage.SHOWDOWN;
                 showDown();
                 stage = GameStage.FINISHED;
-                
+
             }
 
             default -> {
@@ -130,6 +126,7 @@ public class PokerGame {
             sb.append(ChatColor.GOLD)
                     .append("[")
                     .append(cardText(c))
+                    .append(ChatColor.GOLD)
                     .append("] ");
         }
         player.sendMessage(sb.toString());
@@ -193,4 +190,8 @@ public class PokerGame {
             cmd.sendActionMenu(player);  // sendActionMenu must be public
         }
     }
+    private void sendSeparator() {
+        player.sendMessage(ChatColor.GRAY + "----------------------------------------");
+    }
 }
+

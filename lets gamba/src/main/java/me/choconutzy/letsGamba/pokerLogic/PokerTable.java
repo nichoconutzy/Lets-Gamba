@@ -846,6 +846,7 @@ public class PokerTable {
             TablePlayer next = getNextActivePlayerWhoHasNotActed(active);
             if (next != null) {
                 currentPlayerId = next.getUuid();
+                sendSeparator();
                 announceTurn();
                 return;
             }
@@ -854,7 +855,7 @@ public class PokerTable {
         for (TablePlayer tp : active) {
             tp.resetForNewStreet();
         }
-
+        sendSeparator();
         advanceStage();
     }
 
@@ -868,7 +869,7 @@ public class PokerTable {
 
                 broadcast(ChatColor.GREEN + "Flop is dealt:");
                 broadcastBoard();
-                remindAllPlayersOfHands();
+                //remindAllPlayersOfHands();
             }
 
             case FLOP -> {
@@ -879,7 +880,7 @@ public class PokerTable {
 
                 broadcast(ChatColor.GREEN + "Turn is dealt:");
                 broadcastBoard();
-                remindAllPlayersOfHands();
+                //remindAllPlayersOfHands();
             }
 
             case TURN -> {
@@ -890,7 +891,7 @@ public class PokerTable {
 
                 broadcast(ChatColor.GREEN + "River is dealt:");
                 broadcastBoard();
-                remindAllPlayersOfHands();
+                //remindAllPlayersOfHands();
             }
 
             case RIVER -> {
@@ -1219,6 +1220,9 @@ public class PokerTable {
         broadcast(sb.toString());
     }
 
+    private void sendSeparator() {
+        broadcast(ChatColor.DARK_GRAY + "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬");
+    }
 // ---------- CARD DISPLAY ----------
 
     private String cardText(Card c) {
@@ -1267,6 +1271,7 @@ public class PokerTable {
 
 // ---------- DEALER / NITWIT LOGIC ----------
 // MOVED TO nitwitDealer.java; bomboclaat
+
 // ---------- AFK CHECKER ----------
 
     public void startAfkChecker() {

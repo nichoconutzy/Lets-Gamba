@@ -584,7 +584,7 @@ public class nitwitDealer {
     // ---------- TIPPING LOGIC ----------
 
     public void openTippingMenu(Player player) {
-        Inventory inv = Bukkit.createInventory(null, 9, ChatColor.GREEN + "Tip the Dealer?");
+        Inventory inv = Bukkit.createInventory(null, 9, ChatColor.BLACK + "Tip the Dealer?");
 
         inv.setItem(2, createGuiItem(Material.IRON_NUGGET, ChatColor.YELLOW + "$10", "Click to tip 10"));
         inv.setItem(3, createGuiItem(Material.GOLD_NUGGET, ChatColor.GOLD + "$20", "Click to tip 20"));
@@ -624,7 +624,7 @@ public class nitwitDealer {
         eco.subtract(player.getUniqueId(), tipAmount);
 
         // Confirmation message
-        player.sendMessage(ChatColor.GREEN + "You tipped the dealer " + ChatColor.GOLD + "$" + amount + ChatColor.GREEN + "!");
+        player.sendMessage(ChatColor.BLACK + "You tipped the dealer " + ChatColor.GOLD + "$" + amount + ChatColor.GREEN + "!");
 
         // Physical Reaction
         playDealerReaction();
