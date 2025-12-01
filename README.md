@@ -6,6 +6,7 @@ Poker gambling plugin for servers running Paper on Java Minecraft 1.21.10
 ### Summary
 This Minecraft plugin adds in Texas Hold'em for Paper/Spigot Minecraft Java 1.21.10. It includes the main game in the chatbox, economy integration, poker table range detection, autojoin mechanics, and much more.
 
+---
 ### Code Stack
 Java
 
@@ -30,7 +31,8 @@ Java
 * Add blind rotation with Dealer button
 * Add visuals for flop and river on the wool table (Using [Blackjack](https://modrinth.com/plugin/bjplugin) for Paper as inspiration)
 * Custom greenwool textures
-  
+
+---
 * ~~Add in Economy support for Vault/EssentialsX plugin integration~~
 * ~~Add Nitwit + Wool block table requirement for a valid poker table~~
 * ~~Add Big blind and small blind betting along with mid-round custom bet/raise~~
