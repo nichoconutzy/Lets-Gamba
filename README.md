@@ -10,8 +10,8 @@ This Minecraft plugin adds in Texas Hold'em for Paper/Spigot Minecraft Java 1.21
 Java
 
 ### Contributors
-* Nichoconutzy
-* Handburger
+* choconutzy
+* cyforce (RTHKKona)
 * MWMothman
 
 ### Features
