@@ -11,8 +11,25 @@ import java.util.Map;
 import java.util.UUID;
 
 public class PokerManager {
+    // static fields
     private static final Map<Integer, PokerTable> tables = new HashMap<>();
     private static int nextTableId = 1;
+    private static boolean singleplayerOverride = false;
+
+    // Singleplayer Override Methods
+    public static boolean isSingleplayerOverride() {
+        return singleplayerOverride;
+    }
+
+    public static void setSingleplayerOverride(boolean enabled, Player sender) {
+        singleplayerOverride = enabled;
+        String status = enabled ? "ENABLED" : "DISABLED";
+        ChatColor color = enabled ? ChatColor.GREEN : ChatColor.RED;
+        sender.sendMessage(ChatColor.YELLOW + "Singleplayer override mode: " + color + status);
+        if (enabled) {
+            sender.sendMessage(ChatColor.GRAY + "You can now start poker hands with 1 player.");
+        }
+    }
 
 // --- HOSTING ---
 
@@ -134,10 +151,6 @@ public class PokerManager {
         return null;
     }
 
-    /**
-     * Required for PokerRegionListener to iterate all active tables
-     * to check if a player walked into one.
-     */
     public static Collection<PokerTable> getActiveTables() {
         return tables.values();
     }

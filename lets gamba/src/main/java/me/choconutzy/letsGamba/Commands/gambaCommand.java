@@ -31,6 +31,17 @@ public class gambaCommand implements CommandExecutor {
 
         String sub = args[0].toLowerCase();
 
+        // /poker override
+        if (sub.equals("override") || sub.equals("ov") || sub.equals("singleplayer")) {
+            if (!player.isOp()) {
+                player.sendMessage(ChatColor.RED + "Only operators can use singleplayer override mode.");
+                return true;
+            }
+            boolean currentlyEnabled = me.choconutzy.letsGamba.pokerLogic.PokerManager.isSingleplayerOverride();
+            me.choconutzy.letsGamba.pokerLogic.PokerManager.setSingleplayerOverride(!currentlyEnabled, player);
+            return true;
+        }
+
         // /poker join -> Join an existing table
         if (sub.equals("join") || sub.equals("j")) {
             // Support for /poker join <ID>
@@ -108,6 +119,7 @@ public class gambaCommand implements CommandExecutor {
         player.sendMessage(ChatColor.RED + "/poker join " + ChatColor.GRAY + "(Join existing table)");
         player.sendMessage(ChatColor.RED + "/poker leave");
         player.sendMessage(ChatColor.RED + "/poker fold | call | raise");
+        player.sendMessage(ChatColor.RED + "/poker override " + ChatColor.GRAY + "Toggle singleplayer override mode.");
         return true;
     }
 

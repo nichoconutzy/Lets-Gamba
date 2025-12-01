@@ -258,27 +258,32 @@ public class PokerTable {
         return false;
     }
 
-    public void tryAutoStart() { // Just a public wrapper to trigger timer if conditions are met
-        if (players.size() >= AUTO_START_PLAYERS && !inHand && restartTask == null) {
-            broadcast(ChatColor.GREEN + "Minimum players reached (" + AUTO_START_PLAYERS + "). Starting hand in 10 seconds...");
+    public void tryAutoStart() {
+        int requiredPlayers = PokerManager.isSingleplayerOverride() ? 1 : AUTO_START_PLAYERS;
+        if (players.size() >= requiredPlayers && !inHand && restartTask == null) {
+            String msg = PokerManager.isSingleplayerOverride() ?
+                    "Singleplayer override active. Starting hand in 1 seconds..." :
+                    "Minimum players reached (" + AUTO_START_PLAYERS + "). Starting hand in 10 seconds...";
+            broadcast(ChatColor.GREEN + msg);
 
+            int countdown = PokerManager.isSingleplayerOverride() ? 1 : 10;
             restartTask = new BukkitRunnable() {
-                int countdown = 10;
-
+                int count = countdown;
                 @Override
                 public void run() {
-                    if (countdown > 0) {
-                        broadcast(ChatColor.YELLOW + String.valueOf(countdown) + "...");
-                        countdown--;
+                    if (count > 0) {
+                        broadcast(ChatColor.YELLOW + String.valueOf(count) + "...");
+                        count--;
                     } else {
                         restartTask = null;
-                        startNewHand(); // Triggers the game start
+                        startNewHand();
                         this.cancel();
                     }
                 }
             }.runTaskTimer(LetsGambaPlugin.getInstance(), 0L, 20L);
         }
     }
+
     // ---------- JOIN / LEAVE & RADIUS ----------
     public void hostTable(Player player) {
         // Detect and fix corrupted state where flags are true but dealer entity is invalid
@@ -418,11 +423,17 @@ public class PokerTable {
 
         broadcast(ChatColor.YELLOW + player.getName() + " left the poker table.");
 
-        if (inHand && !tp.isFolded()) {
-            tp.setFolded(true);
-            if (currentPlayerId != null && currentPlayerId.equals(id)) {
-                nextTurnOrStage();
-            }
+//      if (inHand && !tp.isFolded()) {
+//          tp.setFolded(true);
+//          if (currentPlayerId != null && currentPlayerId.equals(id)) {
+//              nextTurnOrStage();
+//          }
+//      }
+
+        int minPlayers = PokerManager.isSingleplayerOverride() ? 1 : 2;
+        if (inHand && players.size() < minPlayers) {
+            broadcast(ChatColor.RED + "Not enough players to continue. Hand ended.");
+            endHand();
         }
 
         // If player count drops below threshold, cancel start timer
@@ -464,9 +475,11 @@ public class PokerTable {
 // ---------- START HAND ----------
 
     private void startNewHand() {
+        // singleplayer override
         // Check system
-        if (players.size() < 2) {
-            broadcast(ChatColor.RED + "Not enough players to start a hand.");
+        int minPlayers = PokerManager.isSingleplayerOverride() ? 1 : 2;
+        if (players.size() < minPlayers) {
+            broadcast(ChatColor.RED + "Not enough players.");
             inHand = false;
             return;
         }
@@ -761,11 +774,18 @@ public class PokerTable {
     private void nextTurnOrStage() {
         List<TablePlayer> active = getActivePlayersInOrder();
 
-        if (active.size() <= 1) {
+        // Singleplayer override: don't end early unless player folded
+        if (PokerManager.isSingleplayerOverride() && active.isEmpty()) {
+            broadcast(ChatColor.RED + "You folded. Hand ended.");
+            Bukkit.getScheduler().runTaskLater(LetsGambaPlugin.getInstance(), this::endHand, 140L);
+            return;
+        }
+
+        // Multiplayer early win condition (or singleplayer with no override)
+        if (active.size() <= 1 && !PokerManager.isSingleplayerOverride()) {
             if (active.size() == 1) {
                 TablePlayer winner = active.get(0);
-                broadcast(ChatColor.GREEN + winner.getName()
-                        + " wins the pot (everyone else folded).");
+                broadcast(ChatColor.GREEN + winner.getName() + " wins the pot (everyone else folded).");
                 payWinners(Collections.singletonList(winner));
                 Player wp = winner.getOnlinePlayer();
                 if (wp != null) {
@@ -774,11 +794,7 @@ public class PokerTable {
             } else {
                 broadcast(ChatColor.RED + "No active players remain.");
             }
-            Bukkit.getScheduler().runTaskLater(
-                    LetsGambaPlugin.getInstance(),
-                    this::endHand,
-                    140L // 100 ticks ≈ 5 seconds (adjust if you like)
-            );
+            Bukkit.getScheduler().runTaskLater(LetsGambaPlugin.getInstance(), this::endHand, 140L);
             return;
         }
 
@@ -1025,7 +1041,8 @@ public class PokerTable {
 
         int playerCount = players.size();
 
-        if (playerCount < AUTO_START_PLAYERS) {
+        int minPlayers = PokerManager.isSingleplayerOverride() ? 1 : AUTO_START_PLAYERS;
+        if (playerCount < minPlayers) {
             broadcast(ChatColor.RED + "Waiting for more players to join to start the next hand...");
             broadcast(ChatColor.GRAY + "Current players: " + playerCount + "/6. Use /poker join.");
         } else {
@@ -1043,7 +1060,7 @@ public class PokerTable {
 
                     // Safety checks
                     if (players.size() < AUTO_START_PLAYERS) {
-                        broadcast(ChatColor.RED + "Not enough players to start the next hand.");
+                        broadcast(ChatColor.RED + "Not enough players for next hand.");
                         return;
                     }
                     if (center == null) return;
