@@ -624,7 +624,7 @@ public class nitwitDealer {
         eco.subtract(player.getUniqueId(), tipAmount);
 
         // Confirmation message
-        player.sendMessage(ChatColor.BLACK + "You tipped the dealer " + ChatColor.GOLD + "$" + amount + ChatColor.GREEN + "!");
+        player.sendMessage(ChatColor.GREEN + "You tipped the dealer " + ChatColor.GOLD + "$" + amount + ChatColor.GREEN + "!");
 
         // Physical Reaction
         playDealerReaction();

@@ -895,6 +895,7 @@ public class PokerTable {
             }
 
             case RIVER -> {
+                sendSeparator();
                 stage = GameStage.SHOWDOWN;
                 doShowdownPvP();
 
@@ -1084,7 +1085,7 @@ public class PokerTable {
             broadcast(ChatColor.GRAY + "Current players: " + playerCount + "/6. Use /poker join.");
         } else {
             broadcast(ChatColor.GRAY + "--------------------------------");
-            broadcast(ChatColor.AQUA + "  Hand Finished!");
+            broadcast(ChatColor.AQUA + "  Game Finished!");
             broadcast(ChatColor.YELLOW + "  Next hand starting in 5 seconds...");
             broadcast(ChatColor.GRAY + "  Type " + ChatColor.RED + "/poker leave" + ChatColor.GRAY + " to quit now.");
             broadcast(ChatColor.GRAY + "--------------------------------");
@@ -1221,7 +1222,7 @@ public class PokerTable {
     }
 
     private void sendSeparator() {
-        broadcast(ChatColor.DARK_GRAY + "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬");
+        broadcast(ChatColor.GRAY + "--------------------------------");
     }
 // ---------- CARD DISPLAY ----------
 
