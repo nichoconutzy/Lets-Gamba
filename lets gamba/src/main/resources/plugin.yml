@@ -1,5 +1,5 @@
 name: letsgamba
-version: '0.6.5'
+version: '0.6.5.1'
 authors:
   - nichoconutzy
   - Handburger
@@ -11,6 +11,6 @@ softdepend: [GSit]
 commands:
   poker:
     description: Play Texas Hold'em in Minecraft!
-    usage: "/poker [join|leave|fold|call|raise|info]"
+    usage: "/poker [start|join|leave|fold|call|raise|info]"
     aliases: [check, call, fold, raise]
 

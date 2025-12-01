@@ -471,6 +471,42 @@ public class PokerTable {
         tableBlocks.clear();
         center = null;
     }
+// Adding new manual start logic for 2 player exclusively
+    // ---------- MANUAL START LOGIC ----------
+
+    public void attemptStart(Player requestor) {
+        // 1. Check if user is actually seated
+        if (!players.containsKey(requestor.getUniqueId())) {
+            requestor.sendMessage(ChatColor.RED + "You must be seated at the table to start the game.");
+            return;
+        }
+
+        // 2. Check if game is actively played
+        if (inHand) {
+            requestor.sendMessage(ChatColor.RED + "A hand is already in progress. Wait for it to finish.");
+            return;
+        }
+
+        // 3. Check Minimum Players
+        // If Singleplayer override is TRUE, min is 1. Otherwise, min is 2.
+        int minPlayers = PokerManager.isSingleplayerOverride() ? 1 : 2;
+
+        if (players.size() < minPlayers) {
+            requestor.sendMessage(ChatColor.RED + "You need at least " + minPlayers + " players to start.");
+            return;
+        }
+
+        // 4. Cancel existing auto-start timer if it's counting down
+        if (restartTask != null) {
+            restartTask.cancel();
+            restartTask = null;
+            broadcast(ChatColor.YELLOW + "Auto-start timer interrupted by manual start.");
+        }
+
+        // 5. Start the game
+        broadcast(ChatColor.GREEN + requestor.getName() + " has started the game manually!");
+        startNewHand();
+    }
 
 // ---------- START HAND ----------
 

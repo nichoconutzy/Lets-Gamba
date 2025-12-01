@@ -1,4 +1,5 @@
 package me.choconutzy.letsGamba.pokerLogic;
+
 import me.choconutzy.letsGamba.pokerLogic.PokerManager;
 import me.choconutzy.letsGamba.pokerLogic.PokerTable;
 import org.bukkit.ChatColor;
@@ -13,29 +14,37 @@ public class PokerRegionListener implements Listener {
     public void onMove(PlayerMoveEvent event) {
         Player p = event.getPlayer();
 
-        // Only trigger on block-transition (removes lag spam)
+        // 1. Optimization: Only run logic if the player moved to a new BLOCK
+        // (Prevents code running 20 times a second just for looking around)
         if (event.getFrom().getBlockX() == event.getTo().getBlockX() &&
-                event.getFrom().getBlockZ() == event.getTo().getBlockZ()) return;
+                event.getFrom().getBlockZ() == event.getTo().getBlockZ()) {
+            return;
+        }
 
-        // Check all active tables
+        // 2. Check all active tables
         for (PokerTable table : PokerManager.getActiveTables()) {
+
+            // This method in your PokerTable.java already handles the 5x4 expansion
             boolean inside = table.isInsideTableArea(p);
             boolean alreadyJoined = table.hasPlayer(p.getUniqueId());
 
-            // Joined into the box (and not already playing)
+            // --- Case A: Player walked INTO the 5x4 box ---
             if (inside && !alreadyJoined) {
-                // The join method handles seating and broadcast
-                table.join(p);
-                p.sendMessage(ChatColor.GOLD + "You sat down at Poker Table #" + table.getTableId());
+                // FORCE PLAYER TO RUN COMMAND
+                // We append the ID so they join the specific table they walked into
+                p.performCommand("poker join " + table.getTableId());
 
-                // Note: table.join() calls tryAutoStart() internally now,
-                // checking for the 3-player threshold.
+                // Note: We removed the manual p.sendMessage here because the
+                // command itself usually sends a "You sat down" message.
             }
 
-            // Left the box (and was playing)
+            // --- Case B: Player walked OUT OF the 5x4 box ---
             else if (!inside && alreadyJoined) {
-                table.leave(p);
-                p.sendMessage(ChatColor.RED + "You stood up and left the table.");
+                // FORCE PLAYER TO RUN LEAVE COMMAND
+                p.performCommand("poker leave");
+
+                // Note: Same as above, the command likely handles the message
+                // so we don't send a duplicate message here.
             }
         }
     }

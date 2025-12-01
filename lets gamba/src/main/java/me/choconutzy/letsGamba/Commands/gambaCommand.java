@@ -2,6 +2,7 @@ package me.choconutzy.letsGamba.Commands;
 
 import me.choconutzy.letsGamba.pokerLogic.PokerAction;
 import me.choconutzy.letsGamba.pokerLogic.PokerManager;
+import me.choconutzy.letsGamba.pokerLogic.PokerTable;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
@@ -39,6 +40,20 @@ public class gambaCommand implements CommandExecutor {
             }
             boolean currentlyEnabled = me.choconutzy.letsGamba.pokerLogic.PokerManager.isSingleplayerOverride();
             me.choconutzy.letsGamba.pokerLogic.PokerManager.setSingleplayerOverride(!currentlyEnabled, player);
+            return true;
+        }
+
+        // /poker start
+        if (sub.equals("start")) {
+            // 1. Get the table the player is currently in
+            PokerTable table = PokerManager.getTableOfPlayer(player);
+
+            if (table == null) {
+                player.sendMessage(ChatColor.RED + "You are not currently sitting at a poker table.");
+                return true;
+            }
+            // 2. Attempt to start the game (Logic handled in PokerTable to keep Command clean)
+            table.attemptStart(player);
             return true;
         }
 
