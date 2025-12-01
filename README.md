@@ -27,6 +27,20 @@ Java
 * buh
 
 
+### Getting Started
+Start by placing down 3x2 Green Wool. You want to also place slabs or stairs around three sides of the green wool. Leave one of the 3-long sides completely empty as this will be the side that the Nitwit dealer will stand.
+
+Then find a nitwit and keep him at least within 40 blocks from the table itself. Only Nitwits are allowed to be dealers!
+
+Initialize the poker table with /poker. You will need to be nearby to initialise it. The nitwit should've moved to the table and is awaiting players to join.
+/poker join is available as well.
+
+Play the game via the chatbox buttons. You can leave the game with /poker leave.
+
+> For Operators Only - 
+> You can use /poker override for testing purposes on your server if you need, as it enables singleplayer games. Note that it is coded so then you only play a single game before it raises redflags on the insufficient quantity of players. Remember to type it again to disable it as the command is for Global tables.
+
+
 ### Bugfixes/Changes/Improvements
 * Add blind rotation with Dealer button
 * Add visuals for flop and river on the wool table (Using [Blackjack](https://modrinth.com/plugin/bjplugin) for Paper as inspiration)
