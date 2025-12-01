@@ -519,7 +519,6 @@ public class PokerTable {
             inHand = false;
             return;
         }
-
         inHand = true;
         stage = GameStage.PRE_FLOP;
         board.clear();
@@ -538,7 +537,7 @@ public class PokerTable {
 
             Player p = tp.getOnlinePlayer();
             if (p != null && p.isOnline()) {
-                p.sendMessage(ChatColor.AQUA + "New multiplayer PvP hand started!");
+                p.sendMessage(ChatColor.AQUA + "Multiplayer PvP game started!");
                 p.sendMessage(ChatColor.AQUA + "Your hand: "
                         + cardText(hand[0]) + ChatColor.AQUA + " and " + cardText(hand[1]));
             }
@@ -546,7 +545,7 @@ public class PokerTable {
 
         broadcast(ChatColor.GREEN + "Pre-flop: players act in turn.");
 
-        // Apply blinds
+    // Apply blinds
         applyBlinds();
 
         List<TablePlayer> active = getActivePlayersInOrder();
@@ -566,6 +565,7 @@ public class PokerTable {
             announceTurn();
         }
     }
+
     // Blind Logic
     private void applyBlinds() {
         List<TablePlayer> active = getActivePlayersInOrder();
@@ -895,7 +895,6 @@ public class PokerTable {
             }
 
             case RIVER -> {
-                sendSeparator();
                 stage = GameStage.SHOWDOWN;
                 doShowdownPvP();
 
@@ -1224,6 +1223,7 @@ public class PokerTable {
     private void sendSeparator() {
         broadcast(ChatColor.GRAY + "--------------------------------");
     }
+
 // ---------- CARD DISPLAY ----------
 
     private String cardText(Card c) {

@@ -637,8 +637,41 @@ public class nitwitDealer {
         if (e instanceof Villager v) {
             Location loc = v.getLocation();
 
-            // Particles: Happy Green/Hearts
-            v.getWorld().spawnParticle(Particle.HEART, loc.add(0, 0.5, 0), 2, 0.3, 0.3, 0.3);
+            // 🎉 ENHANCED HEARTS EFFECT - Burst of joy!
+            // Spawn multiple waves of hearts with upward motion
+            for (int i = 0; i < 5; i++) {
+                v.getWorld().spawnParticle(
+                        Particle.HEART,
+                        loc.clone().add(0, 0.8, 0), // Slightly above villager's head
+                        8, // More particles per burst
+                        0.4, 0.2, 0.4, // Spread radius (X, Y, Z)
+                        0.1, // Extra velocity (makes them float up)
+                        null, // No data needed for hearts
+                        true // Show to all players in visible range
+                );
+
+                // Add complimentary hearts that float higher
+                v.getWorld().spawnParticle(
+                        Particle.HEART,
+                        loc.clone().add(0, 1.2, 0),
+                        5,
+                        0.3, 0.3, 0.3,
+                        0.15,
+                        null,
+                        true
+                );
+            }
+
+            // ✨ Optional: Add some sparkle effect around the hearts
+            v.getWorld().spawnParticle(
+                    Particle.END_ROD,
+                    loc.clone().add(0, 1.0, 0),
+                    10,
+                    0.5, 0.5, 0.5,
+                    0.05,
+                    null,
+                    true
+            );
 
             // Sound: Happy Villager + XP pickup sound
             v.getWorld().playSound(loc, Sound.ENTITY_VILLAGER_YES, 1.0f, 1.0f);
@@ -646,8 +679,6 @@ public class nitwitDealer {
 
             // Movement: Small jump of joy
             v.setVelocity(new Vector(0, 0.3, 0));
-
-            // Look at the player who tipped? (Optional, requires passing player loc)
         }
     }
 
