@@ -15,8 +15,6 @@ public class TablePlayer {
     private boolean folded = false;
     private boolean actedThisStreet = false;
 
-    private boolean afkWarned = false;
-
     private BigDecimal betThisRound = BigDecimal.ZERO;
     private boolean allIn = false;
     public BigDecimal getBetThisRound() {
@@ -47,18 +45,19 @@ public class TablePlayer {
         this.afkWarned = afkWarned;
     }
 
+    //afk timer
     private long lastActionTime;
+    private boolean afkWarned = false;
+
+    public void updateActivity() {
+        lastActionTime = System.currentTimeMillis();
+        afkWarned = false; // any action = not AFK / not warned
+    }
 
     public TablePlayer(Player player) {
         this.uuid = player.getUniqueId();
         this.name = player.getName();
         this.lastActionTime = System.currentTimeMillis();
-    }
-
-
-    public void updateActivity() {
-        lastActionTime = System.currentTimeMillis();
-        afkWarned = false; // any action = not AFK / not warned
     }
 
     public long getLastActionTime() {

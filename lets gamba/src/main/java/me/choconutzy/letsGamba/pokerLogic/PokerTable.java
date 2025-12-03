@@ -646,12 +646,11 @@ public class PokerTable {
                     nextTurnOrStage();
                 } else {
                     if (!chargePlayer(tp, toCall)) {
-                        player.sendMessage(ChatColor.RED + "You cannot call and have been folded.");
-                        tp.setFolded(true);
-                        tp.setActedThisStreet(true);
-                        nextTurnOrStage();
+                        // Not enough chips to fully call – treat it as an all-in with whatever they have.
+                        player.sendMessage(ChatColor.YELLOW +
+                                "You don't have enough to call " + toCall + ". Going ALL IN with your remaining balance.");
+                        handleAllIn(player);
                     } else {
-                        tp.setActedThisStreet(true);
                         broadcast(ChatColor.YELLOW + player.getName() + " calls " + toCall + ".");
                         nextTurnOrStage();
                     }
@@ -724,33 +723,28 @@ public class PokerTable {
             player.sendMessage(ChatColor.RED + "You have no money to go all-in with.");
             return;
         }
-        BigDecimal playerBet = tp.getBetThisRound();
-        BigDecimal amountToBet = wallet; // bet entire wallet for now
+        BigDecimal toPay = wallet;
 
-        // Take the money + add to pot using existing chargePlayer()
-        if (!chargePlayer(tp, amountToBet)) {
-            player.sendMessage(ChatColor.RED + "Economy error – could not go all-in.");
+        // Move their whole stack into the pot
+        if (!eco.subtract(id, toPay)) {
+            player.sendMessage(ChatColor.RED + "Economy error – couldn't take your all-in.");
             return;
         }
 
-        tp.setAllIn(true);
+        pot = pot.add(toPay);
+        tp.setBetThisRound(tp.getBetThisRound().add(toPay));
+        tp.setAllIn(true);   // you already have this flag on TablePlayer
 
-        BigDecimal newTotalBet = playerBet.add(amountToBet);
-
-        // If this is higher than currentBet, it's a raise
-        if (newTotalBet.compareTo(currentBet) > 0) {
-            lastRaiseSize = newTotalBet.subtract(currentBet);
-            currentBet = newTotalBet;
-
-            broadcast(ChatColor.GOLD + player.getName() + ChatColor.GREEN +
-                    " goes ALL IN for " + ChatColor.GOLD + newTotalBet + ChatColor.GREEN + "!");
-        } else {
-            // All-in just to call / match
-            broadcast(ChatColor.GOLD + player.getName() + ChatColor.GREEN +
-                    " goes ALL IN for " + ChatColor.GOLD + newTotalBet +
-                    ChatColor.GREEN + " (call).");
+        // If this all-in is the biggest bet, bump the table's currentBet
+        if (tp.getBetThisRound().compareTo(currentBet) > 0) {
+            BigDecimal diff = tp.getBetThisRound().subtract(currentBet);
+            lastRaiseSize = diff.max(lastRaiseSize);
+            currentBet = tp.getBetThisRound();
         }
-        tp.setActedThisStreet(true);
+
+        broadcast(ChatColor.LIGHT_PURPLE + player.getName() + " goes ALL IN for " + toPay + "!");
+
+        // Then continue just like a normal raise/call
         nextTurnOrStage();
     }
 
@@ -917,7 +911,7 @@ public class PokerTable {
                 // ⏱ wait 7 seconds before ending the hand
                 Bukkit.getScheduler().runTaskLater(LetsGambaPlugin.getInstance(), () -> {
                     endHand();
-                }, 140L); // 20 ticks = 1 second → 80 ticks = 7 seconds
+                }, 140L); // 20 ticks = 1 second → 140 ticks = 7 seconds
                 return;
             }
             default -> {}
@@ -1287,23 +1281,22 @@ public class PokerTable {
 
                 // 1. Check if player is offline
                 if (p == null || !p.isOnline()) {
-                    leave(tp.getOnlinePlayer()); // Use cached player object or UUID logic in leave
+                    // remove them from the table
+                    leave(p);    // leave(null) is safe if your leave() checks for null
                     continue;
                 }
 
-                // --- NEW DISTANCE CHECK ---
+                // --- DISTANCE CHECK ---
                 // If they wander outside the detection box, kick them
-                // We use isInsideTableArea for strict checking, or a slightly larger radius for tolerance
                 if (!isInsideTableArea(p)) {
-                    // Maybe a slight grace distance, but strictly leaving the box implies leaving the table
                     p.sendMessage(ChatColor.RED + "You left the table area and have left the game.");
                     leave(p);
                     continue;
                 }
-                // --------------------------
+                // ----------------------
 
-                // 2. Existing Time Check
-                long inactiveMs = now - tp.getLastActionTime();
+                // 2. Time-based AFK check
+                long inactiveMs = now - tp.getLastActionTime();  // <--- see step 2 below
 
                 // 1:30 to 3:00 → send warning ONCE
                 if (inactiveMs >= 90_000 && inactiveMs < 180_000) {
@@ -1316,7 +1309,7 @@ public class PokerTable {
 
                 // 3:00+ → kick
                 if (inactiveMs >= 180_000) {
-                    p.sendMessage(ChatColor.RED + "You have been kicked for being AFK.");
+                    p.sendMessage(ChatColor.RED + "You have been kicked from the poker table for being AFK.");
                     leave(p);
                 }
             }
