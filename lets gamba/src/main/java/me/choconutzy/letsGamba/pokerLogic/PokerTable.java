@@ -1271,48 +1271,40 @@ public class PokerTable {
 
     public void startAfkChecker() {
         Bukkit.getScheduler().runTaskTimer(LetsGambaPlugin.getInstance(), () -> {
-            if (players.isEmpty() || center == null) return;
+            // Debug: see that this actually runs and how many players are tracked
+            Bukkit.getLogger().info("[Poker AFK] tick: players=" + players.size());
+            if (players.isEmpty()) return;
 
             long now = System.currentTimeMillis();
-
-            // Use a copy of values to avoid ConcurrentModificationException when removing players
             for (TablePlayer tp : new ArrayList<>(players.values())) {
                 Player p = tp.getOnlinePlayer();
 
-                // 1. Check if player is offline
                 if (p == null || !p.isOnline()) {
-                    // remove them from the table
-                    leave(p);    // leave(null) is safe if your leave() checks for null
-                    continue;
-                }
-
-                // --- DISTANCE CHECK ---
-                // If they wander outside the detection box, kick them
-                if (!isInsideTableArea(p)) {
-                    p.sendMessage(ChatColor.RED + "You left the table area and have left the game.");
+                    Bukkit.getLogger().info("[Poker AFK] removing offline player " + tp.getUuid());
                     leave(p);
                     continue;
                 }
-                // ----------------------
+                long inactiveMs = now - tp.getLastActionTime();
+                Bukkit.getLogger().info("[Poker AFK] " + p.getName()
+                        + " inactive=" + inactiveMs + "ms, warned=" + tp.isAfkWarned());
 
-                // 2. Time-based AFK check
-                long inactiveMs = now - tp.getLastActionTime();  // <--- see step 2 below
-
-                // 1:30 to 3:00 → send warning ONCE
+                // 1:30–3:00 → warning once
                 if (inactiveMs >= 90_000 && inactiveMs < 180_000) {
                     if (!tp.isAfkWarned()) {
                         p.sendMessage(ChatColor.YELLOW + "You have been inactive for 1 minute 30 seconds.");
                         p.sendMessage(ChatColor.YELLOW + "You will be kicked from the poker table if inactive for 3 minutes.");
                         tp.setAfkWarned(true);
+                        Bukkit.getLogger().info("[Poker AFK] warned " + p.getName());
                     }
                 }
 
                 // 3:00+ → kick
                 if (inactiveMs >= 180_000) {
                     p.sendMessage(ChatColor.RED + "You have been kicked from the poker table for being AFK.");
+                    Bukkit.getLogger().info("[Poker AFK] kicked " + p.getName());
                     leave(p);
                 }
             }
-        }, 20L, 20L); // Checks every 1 second (20 ticks)
+        }, 20L, 20L); // every second
     }
 }
