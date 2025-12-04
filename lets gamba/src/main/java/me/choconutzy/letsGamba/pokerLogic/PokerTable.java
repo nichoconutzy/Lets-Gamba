@@ -145,6 +145,8 @@ public class PokerTable {
     public PokerTable(int tableId) {
         this.tableId = tableId;
         this.nitwitDealer = new nitwitDealer(this);
+
+        startAfkChecker();
     }
 
     public int getTableId() {
