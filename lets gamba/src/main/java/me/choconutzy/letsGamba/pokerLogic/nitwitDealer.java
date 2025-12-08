@@ -46,7 +46,7 @@ public class nitwitDealer {
         this.pokerTable = pokerTable;
     }
 
-    // ---------- DEALER / NITWIT LOGIC ----------
+// ---------- DEALER / NITWIT LOGIC ----------
 
     public boolean setupDealerAndTable(Player player) {
         isSetupInProgress = true;
@@ -72,9 +72,10 @@ public class nitwitDealer {
             return false;
         }
 
-        // 3. Calculate dealer positions on the 3-block sides only
+        // 3. Determine table bounds and orientation
         int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
         int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+        int tableY = woolBlocks.get(0).getY();
 
         for (Block b : woolBlocks) {
             minX = Math.min(minX, b.getX());
@@ -83,41 +84,23 @@ public class nitwitDealer {
             maxZ = Math.max(maxZ, b.getZ());
         }
 
-        double midX = (minX + maxX) / 2.0 + 0.5;
-        double midZ = (minZ + maxZ) / 2.0 + 0.5;
-        double tableY = tableCenter.getY();
-        World world = tableCenter.getWorld();
+        int xLength = maxX - minX + 1;
+        int zLength = maxZ - minZ + 1;
 
-        // Determine table orientation and create candidates for 3-block sides only
-        List<Location> candidatePositions = new ArrayList<>();
-
-        int xLength = maxX - minX + 1; // Number of blocks along X
-        int zLength = maxZ - minZ + 1; // Number of blocks along Z
-
-        if (xLength == 3 && zLength == 2) {
-            // Table is 3 blocks along X-axis, 2 blocks along Z-axis
-            // Dealer can only stand on the Z sides (North/South - the 3-block sides)
-            candidatePositions.add(new Location(world, midX, tableY, minZ - 0.5)); // North side
-            candidatePositions.add(new Location(world, midX, tableY, maxZ + 1.5)); // South side
-        } else if (xLength == 2 && zLength == 3) {
-            // Table is 2 blocks along X-axis, 3 blocks along Z-axis
-            // Dealer can only stand on the X sides (West/East - the 3-block sides)
-            candidatePositions.add(new Location(world, minX - 0.5, tableY, midZ)); // West side
-            candidatePositions.add(new Location(world, maxX + 1.5, tableY, midZ)); // East side
-        } else {
-            // Invalid table shape
+        if (!((xLength == 3 && zLength == 2) || (xLength == 2 && zLength == 3))) {
             player.sendMessage(ChatColor.RED + "Invalid table shape!");
             player.sendMessage(ChatColor.GRAY + "The table must be exactly 3x2 Green Wool blocks.");
             isSetupInProgress = false;
             return false;
         }
 
-        // 4. Evaluate positions and find the best one
-        Location targetLoc = findBestDealerPosition(candidatePositions, tableCenter);
+        // 4. Find the empty side of the table (strict air check - no chairs/blocks allowed)
+        World world = tableCenter.getWorld();
+        Location targetLoc = findEmptyTableSide(world, minX, maxX, minZ, maxZ, tableY, xLength, zLength);
 
         if (targetLoc == null) {
-            player.sendMessage(ChatColor.RED + "Cannot set up dealer - no valid ground found on either side of the table!");
-            player.sendMessage(ChatColor.GRAY + "Make sure there's solid ground next to the 3-block sides and no stairs blocking.");
+            player.sendMessage(ChatColor.RED + "Cannot set up dealer - no valid position found!");
+            player.sendMessage(ChatColor.GRAY + "Make sure one 3-block side of the table is completely clear (air only, no chairs/blocks).");
             isSetupInProgress = false;
             return false;
         }
@@ -148,118 +131,115 @@ public class nitwitDealer {
     }
 
     /**
-     * Evaluates all candidate positions and returns the best one.
-     * Evaluation is based solely on the table surroundings.
-     * Priority: 1) Valid ground, 2) No stairs, 3) Most open space around position
+     * Finds the empty 3-block side of the table by checking for STRICTLY air blocks.
+     * This method does NOT use findSafeGroundPosition or isPositionSafe - it handles
+     * everything directly to ensure no chairs/stairs/slabs/etc. are on the dealer's side.
      *
-     * @param candidates    List of potential positions around the table (3-block sides only)
-     * @param tableCenter   The center of the table (for facing direction)
-     * @return The best valid location, or null if none found
+     * @return The dealer position on the empty side, or null if none found
      */
-    private Location findBestDealerPosition(List<Location> candidates, Location tableCenter) {
-        List<DealerPositionCandidate> validCandidates = new ArrayList<>();
+    private Location findEmptyTableSide(World world, int minX, int maxX, int minZ, int maxZ, int tableY, int xLength, int zLength) {
 
-        for (Location candidate : candidates) {
-            Location groundPos = findSafeGroundPosition(candidate);
+        if (xLength == 3 && zLength == 2) {
+            // Table is 3 wide on X-axis, 2 deep on Z-axis
+            double midX = (minX + maxX) / 2.0 + 0.5;
 
-            if (groundPos == null) {
-                continue;
+            // Check North side
+            if (isTableSideCompletelyEmpty(world, minX, maxX, minZ - 1, tableY)) {
+                // Verify there's solid floor BELOW the table level
+                Block groundCheck = world.getBlockAt((int) Math.floor(midX), tableY - 1, minZ - 1);
+                if (groundCheck.getType().isSolid() && !isDangerousBlock(groundCheck)) {
+                    // Target Y is tableY (feet at same level as the wool block, standing on the floor)
+                    return new Location(world, midX, tableY, minZ - 0.5);
+                }
             }
 
-            if (!isPositionSafe(groundPos)) {
-                continue;
+            // Check South side
+            if (isTableSideCompletelyEmpty(world, minX, maxX, maxZ + 1, tableY)) {
+                Block groundCheck = world.getBlockAt((int) Math.floor(midX), tableY - 1, maxZ + 1);
+                if (groundCheck.getType().isSolid() && !isDangerousBlock(groundCheck)) {
+                    return new Location(world, midX, tableY, maxZ + 1.5);
+                }
             }
 
-            boolean hasStairs = hasNeighboringStairs(groundPos, tableCenter);
-            int openScore = calculateOpenSpaceScore(groundPos);
+        } else if (xLength == 2 && zLength == 3) {
+            // Table is 2 wide on X-axis, 3 deep on Z-axis
+            double midZ = (minZ + maxZ) / 2.0 + 0.5;
 
-            validCandidates.add(new DealerPositionCandidate(groundPos, hasStairs, openScore));
+            // Check West side
+            if (isTableSideCompletelyEmptyVertical(world, minX - 1, minZ, maxZ, tableY)) {
+                Block groundCheck = world.getBlockAt(minX - 1, tableY - 1, (int) Math.floor(midZ));
+                if (groundCheck.getType().isSolid() && !isDangerousBlock(groundCheck)) {
+                    return new Location(world, minX - 0.5, tableY, midZ);
+                }
+            }
+
+            // Check East side
+            if (isTableSideCompletelyEmptyVertical(world, maxX + 1, minZ, maxZ, tableY)) {
+                Block groundCheck = world.getBlockAt(maxX + 1, tableY - 1, (int) Math.floor(midZ));
+                if (groundCheck.getType().isSolid() && !isDangerousBlock(groundCheck)) {
+                    return new Location(world, maxX + 1.5, tableY, midZ);
+                }
+            }
         }
 
-        if (validCandidates.isEmpty()) {
-            return null;
-        }
-
-        // Sort candidates: no stairs first, then by open space score (higher is better)
-        validCandidates.sort((a, b) -> {
-            // First priority: positions without stairs
-            if (a.hasStairs != b.hasStairs) {
-                return a.hasStairs ? 1 : -1;
-            }
-            // Second priority: more open space (higher score is better)
-            return Integer.compare(b.openScore, a.openScore);
-        });
-
-        return validCandidates.get(0).location;
+        return null;
     }
 
     /**
-     * Calculates an "openness" score for a position based on surrounding blocks.
-     * Higher score means more open/accessible space around the position.
+     * Checks if a horizontal row (along X-axis) at a specific Z is completely empty.
+     * Uses STRICT air check - any non-air block (including stairs, slabs, shelves) will fail.
      *
-     * @param loc The location to evaluate
-     * @return An integer score representing how open the area is
+     * @param world  The world
+     * @param minX   Starting X coordinate
+     * @param maxX   Ending X coordinate
+     * @param z      The Z coordinate to check
+     * @param tableY The Y level of the table
+     * @return true only if ALL blocks at feet and head level are strictly AIR
      */
-    private int calculateOpenSpaceScore(Location loc) {
-        int score = 0;
-        Block centerBlock = loc.getBlock();
+    private boolean isTableSideCompletelyEmpty(World world, int minX, int maxX, int z, int tableY) {
+        for (int x = minX; x <= maxX; x++) {
+            // Torso/Legs level - The actual level of the table (where a chair would be)
+            // This MUST be air. If there is a chair here, this returns false.
+            Block feetLevel = world.getBlockAt(x, tableY, z);
+            if (!isStrictlyAir(feetLevel)) {
+                return false;
+            }
 
-        // Check the immediate ring around the position (8 blocks horizontally)
-        for (int x = -1; x <= 1; x++) {
-            for (int z = -1; z <= 1; z++) {
-                if (x == 0 && z == 0) {
-                    continue;
-                }
-
-                Block groundLevel = centerBlock.getRelative(x, -1, z);
-                Block feetLevel = centerBlock.getRelative(x, 0, z);
-                Block headLevel = centerBlock.getRelative(x, 1, z);
-
-                // Award points for solid ground
-                if (groundLevel.getType().isSolid() && !isDangerousBlock(groundLevel)) {
-                    score += 2;
-                }
-
-                // Award points for passable space at feet and head level
-                if (isPassable(feetLevel)) {
-                    score += 1;
-                }
-                if (isPassable(headLevel)) {
-                    score += 1;
-                }
-
-                // Penalize obstructions
-                if (feetLevel.getType().isSolid()) {
-                    score -= 2;
-                }
-                if (headLevel.getType().isSolid()) {
-                    score -= 2;
-                }
+            // Head level - One block above table
+            Block headLevel = world.getBlockAt(x, tableY + 1, z);
+            if (!isStrictlyAir(headLevel)) {
+                return false;
             }
         }
-
-        // Bonus for the position itself being well-grounded
-        Block directGround = centerBlock.getRelative(0, -1, 0);
-        if (directGround.getType().isSolid() && !isDangerousBlock(directGround)) {
-            score += 3;
-        }
-
-        return score;
+        return true;
     }
 
     /**
-     * Helper class to store candidate position data for comparison.
+     * Checks if a vertical column (along Z-axis) at a specific X is completely empty.
+     * Uses STRICT air check - any non-air block (including stairs, slabs, shelves) will fail.
+     *
+     * @param world  The world
+     * @param x      The X coordinate to check
+     * @param minZ   Starting Z coordinate
+     * @param maxZ   Ending Z coordinate
+     * @param tableY The Y level of the table
+     * @return true only if ALL blocks at feet and head level are strictly AIR
      */
-    private static class DealerPositionCandidate {
-        final Location location;
-        final boolean hasStairs;
-        final int openScore;
+    private boolean isTableSideCompletelyEmptyVertical(World world, int x, int minZ, int maxZ, int tableY) {
+        for (int z = minZ; z <= maxZ; z++) {
+            // Torso/Legs level - The actual level of the table (where a chair would be)
+            Block feetLevel = world.getBlockAt(x, tableY, z);
+            if (!isStrictlyAir(feetLevel)) {
+                return false;
+            }
 
-        DealerPositionCandidate(Location location, boolean hasStairs, int openScore) {
-            this.location = location;
-            this.hasStairs = hasStairs;
-            this.openScore = openScore;
+            // Head level - One block above table
+            Block headLevel = world.getBlockAt(x, tableY + 1, z);
+            if (!isStrictlyAir(headLevel)) {
+                return false;
+            }
         }
+        return true;
     }
 
     private void startDealerWalkingRoutine(Player player, Villager dealer, Location targetPos, Location lookAtTarget) {
@@ -307,21 +287,6 @@ public class nitwitDealer {
         }.runTaskTimer(LetsGambaPlugin.getInstance(), 0L, 5L);
     }
 
-    private boolean hasNeighboringStairs(Location dealerLoc, Location faceTarget) {
-        Vector direction = faceTarget.toVector().subtract(dealerLoc.toVector()).setY(0).normalize();
-        Vector right = direction.clone().crossProduct(new Vector(0, 1, 0)).normalize();
-        Vector left = right.clone().multiply(-1);
-
-        Block rightBlock = dealerLoc.clone().add(right).getBlock();
-        Block leftBlock = dealerLoc.clone().add(left).getBlock();
-
-        return isStair(rightBlock) || isStair(leftBlock);
-    }
-
-    private boolean isStair(Block b) {
-        return b != null && b.getType().name().endsWith("_STAIRS");
-    }
-
     private void startProximityCheck(Player initiator) {
         waitingForHost = true;
         initiator.sendMessage(ChatColor.GREEN + "The Dealer has arrived! Walk to the table to open it.");
@@ -352,12 +317,10 @@ public class nitwitDealer {
                             + ChatColor.YELLOW + center.getBlockX() + ", " + center.getBlockY() + ", " + center.getBlockZ()
                             + ChatColor.GREEN + "! Use " + ChatColor.GOLD + "/poker join" + ChatColor.GREEN + " to join the table.");
 
-                    // Synchronize pokerTable and nitwitDealer (deal!)
                     pokerTable.activateTable(center, tableBlocks, dealerId);
-                    // Call back to PokerTable to handle the join
                     Bukkit.getScheduler().runTaskLater(LetsGambaPlugin.getInstance(), () -> {
                         pokerTable.join(initiator);
-                    }, 5L); // small delay ensures the table has finalized
+                    }, 5L);
 
                     this.cancel();
                     return;
@@ -434,14 +397,23 @@ public class nitwitDealer {
         return new Location(blocks.get(0).getWorld(), totalX / blocks.size(), totalY / blocks.size(), totalZ / blocks.size());
     }
 
-    // ---------- SAFETY AND GROUND DETECTION ----------
+// ---------- SAFETY AND GROUND DETECTION ----------
+
+    /**
+     * STRICT air check - returns true ONLY for air blocks.
+     * This is used for table-side detection to reject ALL non-air blocks.
+     */
+    private boolean isStrictlyAir(Block block) {
+        if (block == null) {
+            return false;
+        }
+        Material type = block.getType();
+        return type == Material.AIR || type == Material.CAVE_AIR || type == Material.VOID_AIR;
+    }
 
     /**
      * Finds a safe ground position for the dealer, preventing clipping.
-     * Searches up to 5 blocks down and 3 blocks up from the initial position.
-     *
-     * @param startPos The starting position to search from
-     * @return A safe ground location, or null if none found
+     * NOTE: This is NOT used for table-side detection anymore.
      */
     private Location findSafeGroundPosition(Location startPos) {
         if (startPos == null || startPos.getWorld() == null) {
@@ -451,16 +423,13 @@ public class nitwitDealer {
         World world = startPos.getWorld();
         int startY = startPos.getBlockY();
 
-        // Search downward first (up to 5 blocks down)
         for (int y = startY; y >= startY - 5; y--) {
             Location checkLoc = new Location(world, startPos.getX(), y, startPos.getZ());
             if (isValidGroundPosition(checkLoc)) {
-                // Position entity on TOP of the solid block
                 return checkLoc.clone().add(0, 1, 0);
             }
         }
 
-        // If downward search failed, try upward (up to 3 blocks up)
         for (int y = startY + 1; y <= startY + 3; y++) {
             Location checkLoc = new Location(world, startPos.getX(), y, startPos.getZ());
             if (isValidGroundPosition(checkLoc)) {
@@ -468,31 +437,26 @@ public class nitwitDealer {
             }
         }
 
-        return null; // No valid ground found
+        return null;
     }
 
     /**
      * Checks if a location is valid ground (solid block with air above).
-     *
-     * @param loc The location to check (should be the potential ground block)
-     * @return true if this is valid ground for the dealer
+     * NOTE: This is NOT used for table-side detection anymore.
      */
     private boolean isValidGroundPosition(Location loc) {
         Block groundBlock = loc.getBlock();
         Block aboveGround = loc.clone().add(0, 1, 0).getBlock();
         Block twoAboveGround = loc.clone().add(0, 2, 0).getBlock();
 
-        // Ground must be solid
         if (!groundBlock.getType().isSolid()) {
             return false;
         }
 
-        // Can't be a dangerous block
         if (isDangerousBlock(groundBlock)) {
             return false;
         }
 
-        // Must have at least 2 blocks of air above for the villager
         if (!isPassable(aboveGround) || !isPassable(twoAboveGround)) {
             return false;
         }
@@ -502,9 +466,7 @@ public class nitwitDealer {
 
     /**
      * Comprehensive safety check for the final dealer position.
-     *
-     * @param loc The location to validate
-     * @return true if the position is safe for the dealer
+     * NOTE: This is NOT used for table-side detection anymore.
      */
     private boolean isPositionSafe(Location loc) {
         if (loc == null || loc.getWorld() == null) {
@@ -515,17 +477,14 @@ public class nitwitDealer {
         Block head = loc.clone().add(0, 1, 0).getBlock();
         Block ground = loc.clone().add(0, -1, 0).getBlock();
 
-        // Must have solid ground below
         if (!ground.getType().isSolid() || isDangerousBlock(ground)) {
             return false;
         }
 
-        // Must have passable space for feet and head
         if (!isPassable(feet) || !isPassable(head)) {
             return false;
         }
 
-        // Check for suffocation risks
         if (feet.getType().isSolid() || head.getType().isSolid()) {
             return false;
         }
@@ -535,24 +494,19 @@ public class nitwitDealer {
 
     /**
      * Checks if a block is passable (air, plants, etc.).
-     *
-     * @param block The block to check
-     * @return true if an entity can pass through it
+     * NOTE: For table-side detection, use isStrictlyAir() instead.
      */
     private boolean isPassable(Block block) {
         Material type = block.getType();
 
-        // Air is always passable
         if (type == Material.AIR || type == Material.CAVE_AIR || type == Material.VOID_AIR) {
             return true;
         }
 
-        // Dangerous fluids are not passable
         if (type == Material.LAVA) {
             return false;
         }
 
-        // Non-solid blocks are generally passable
         if (!type.isSolid()) {
             return true;
         }
@@ -562,14 +516,10 @@ public class nitwitDealer {
 
     /**
      * Checks if a block is dangerous for the dealer to stand on.
-     *
-     * @param block The block to check
-     * @return true if the block is dangerous
      */
     private boolean isDangerousBlock(Block block) {
         Material type = block.getType();
 
-        // Dangerous blocks that should never be used as ground
         return type == Material.LAVA ||
                 type == Material.FIRE ||
                 type == Material.SOUL_FIRE ||
