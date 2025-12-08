@@ -219,7 +219,47 @@ public class PokerTable {
                 + ChatColor.GOLD + currentBet);
     }
 
-// ---------- BOUNDING BOX DETECTION 5x4(3x2) ----------
+
+    // New: location-based check (used by GSit & PokerManager.getTableByBlock)
+    public boolean isInsideTableArea(Location loc) {
+        if (this.tableBlocks.isEmpty()) return false;
+        if (loc == null) return false;
+        if (loc.getWorld() != this.tableBlocks.get(0).getWorld()) return false;
+
+        // Calculate bounds dynamically based on current wool blocks
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+        int tableY = this.tableBlocks.get(0).getY();
+
+        for (Block b : this.tableBlocks) {
+            minX = Math.min(minX, b.getX());
+            maxX = Math.max(maxX, b.getX());
+            minZ = Math.min(minZ, b.getZ());
+            maxZ = Math.max(maxZ, b.getZ());
+        }
+
+        // Expand by 1 block in X and Z directions to create the "5x4" box around the 3x2 table
+        minX -= 1;
+        maxX += 1;
+        minZ -= 1;
+        maxZ += 1;
+
+        int px = loc.getBlockX();
+        int py = loc.getBlockY();
+        int pz = loc.getBlockZ();
+
+        // Check horizontal bounds
+        if (px >= minX && px <= maxX && pz >= minZ && pz <= maxZ) {
+            // Check vertical bounds (allow slightly above/below table height)
+            if (py >= tableY - 1 && py <= tableY + 2) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // ---------- BOUNDING BOX DETECTION 5x4(3x2) ----------
     public boolean isInsideTableArea(Player p) {
         if (this.tableBlocks.isEmpty()) return false;
         if (p.getWorld() != this.tableBlocks.get(0).getWorld()) return false;

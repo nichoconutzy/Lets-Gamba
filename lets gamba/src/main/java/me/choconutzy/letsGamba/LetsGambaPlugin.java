@@ -5,6 +5,7 @@ import me.choconutzy.letsGamba.Commands.gambaCommand;
 import me.choconutzy.letsGamba.Economy.EconomyProvider;
 import me.choconutzy.letsGamba.Economy.TippingListener;
 import me.choconutzy.letsGamba.Economy.VaultEconomyProvider;
+import me.choconutzy.letsGamba.Commands.GSitListener;
 import me.choconutzy.letsGamba.pokerLogic.PokerRegionListener;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -23,14 +24,16 @@ public final class LetsGambaPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new TippingListener(), this);
         economy = new VaultEconomyProvider(this);
         getLogger().info("Poker economy provider: " + economy.getProviderName());
+
         // Plugin startup logic
         getCommand("poker").setExecutor(new gambaCommand());
 
-        if (getServer().getPluginManager().getPlugin("GSit") != null) {
-            getLogger().info("GSit detected! Enabling auto-join on sit.");
-            getServer().getPluginManager().registerEvents(new GSitListener(), this);
-        }
+        // region-based auto leave / join
         getServer().getPluginManager().registerEvents(new PokerRegionListener(), this);
+
+        // GSit sit-down auto join
+        getServer().getPluginManager().registerEvents(new GSitListener(), this);
+
         getLogger().info("LetsGamba has been enabled! Poker time!");
 
 

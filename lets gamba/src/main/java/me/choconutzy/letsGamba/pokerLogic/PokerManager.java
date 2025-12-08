@@ -157,8 +157,12 @@ public class PokerManager {
 
     // Find table by block (For GSit)
     public static PokerTable getTableByBlock(Block block) {
-        for (PokerTable table : tables.values()) {
-            if (table.isBlockPartofTable(block)) {
+        if (block == null) return null;
+
+        Location loc = block.getLocation();
+
+        for (PokerTable table : getActiveTables()) {
+            if (table.isInsideTableArea(loc)) {   // we'll add this overload below
                 return table;
             }
         }
