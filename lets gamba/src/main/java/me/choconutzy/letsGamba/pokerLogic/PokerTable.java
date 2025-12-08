@@ -1307,6 +1307,6 @@ public class PokerTable {
                     leave(p);
                 }
             }
-        }, 20L, 20L); // every second
+        }, 1200L, 1200L);
     }
 }
